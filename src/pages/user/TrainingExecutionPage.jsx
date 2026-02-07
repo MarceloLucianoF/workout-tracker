@@ -1,266 +1,277 @@
-// src/pages/user/TrainingExecutionPage.jsx
-import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuthContext } from '../../hooks/AuthContext';
-import { useAdmin } from '../../hooks/useAdmin';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { collection, getDocs, query, where, addDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
-import { addDoc, collection } from 'firebase/firestore';
+import { useAuthContext } from '../../hooks/AuthContext';
+import toast from 'react-hot-toast';
 
 export default function TrainingExecutionPage() {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { trainingId } = useParams();
   const { user } = useAuthContext();
-  const { exercises } = useAdmin();
-  
-  const training = location.state?.training;
-  const [completedExercises, setCompletedExercises] = useState({});
-  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [trainingStarted, setTrainingStarted] = useState(false);
-  const [startTime, setStartTime] = useState(null);
+  const navigate = useNavigate();
 
-  if (!training) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-600 text-lg">Treino não encontrado</p>
-      </div>
-    );
-  }
+  const [training, setTraining] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeExerciseIndex, setActiveExerciseIndex] = useState(0);
+  const [completedExercises, setCompletedExercises] = useState([]);
+  const [timer, setTimer] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  const trainingExercises = exercises.filter(ex => 
-    training.exercises.includes(ex.id)
-  );
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        console.log("🔍 Buscando treino com ID (campo):", trainingId);
+        
+        // 1. Busca o Treino pelo campo 'id' numérico (ex: 1)
+        const trainingQuery = query(
+          collection(db, 'trainings'), 
+          where('id', '==', Number(trainingId))
+        );
+        const trainingSnap = await getDocs(trainingQuery);
 
-  const currentExercise = trainingExercises[currentExerciseIndex];
-  const totalExercises = trainingExercises.length;
-  const completedCount = Object.values(completedExercises).filter(Boolean).length;
-  const progress = totalExercises > 0 ? Math.round((completedCount / totalExercises) * 100) : 0;
+        if (trainingSnap.empty) {
+          console.error("❌ Treino não encontrado.");
+          toast.error('Treino não encontrado!');
+          navigate('/trainings');
+          return;
+        }
 
-  const handleStartTraining = () => {
-    setTrainingStarted(true);
-    setStartTime(new Date());
-  };
+        // Pega o primeiro resultado encontrado
+        const trainingDoc = trainingSnap.docs[0];
+        const trainingData = trainingDoc.data();
+        const trainingFirestoreId = trainingDoc.id; // Guarda o ID real do documento (JanLq...)
+        
+        // 2. Busca TODOS os exercícios para cruzar os dados
+        const exercisesSnap = await getDocs(collection(db, 'exercises'));
+        // Importante: Mantemos o 'id' interno (número) e salvamos o firestoreId separado
+        const allExercises = exercisesSnap.docs.map(doc => ({ 
+          firestoreId: doc.id, 
+          ...doc.data() 
+        }));
 
-  const toggleExercise = (exerciseId) => {
-    setCompletedExercises(prev => ({
-      ...prev,
-      [exerciseId]: !prev[exerciseId]
-    }));
+        // 3. Hidratação: Cruza os números [1, 3, 5] com os exercícios baixados
+        const hydratedExercises = (trainingData.exercises || [])
+          .map(exerciseId => allExercises.find(ex => ex.id === exerciseId))
+          .filter(Boolean); // Remove vazios se não achar algum
+
+        if (hydratedExercises.length === 0) {
+          toast.error('Este treino não possui exercícios válidos.');
+        }
+
+        setTraining({ 
+          firestoreId: trainingFirestoreId, // ID do banco (Hash)
+          ...trainingData, 
+          exercises: hydratedExercises 
+        });
+
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error);
+        toast.error('Erro ao carregar treino.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (trainingId) {
+      fetchData();
+    }
+  }, [trainingId, navigate]);
+
+  // --- O RESTO DO CÓDIGO PERMANECE IGUAL, SÓ O FETCH MUDOU ---
+
+  // Cronômetro
+  useEffect(() => {
+    let interval;
+    if (isTimerRunning) {
+      interval = setInterval(() => setTimer((prev) => prev + 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning]);
+
+  useEffect(() => {
+    if (!loading && training && training.exercises.length > 0) {
+      setIsTimerRunning(true);
+    }
+  }, [loading, training]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   const handleNextExercise = () => {
-    if (currentExerciseIndex < totalExercises - 1) {
-      setCurrentExerciseIndex(currentExerciseIndex + 1);
+    if (activeExerciseIndex < (training.exercises?.length || 0) - 1) {
+      setActiveExerciseIndex((prev) => prev + 1);
     }
   };
 
-  const handlePreviousExercise = () => {
-    if (currentExerciseIndex > 0) {
-      setCurrentExerciseIndex(currentExerciseIndex - 1);
+  const handlePrevExercise = () => {
+    if (activeExerciseIndex > 0) {
+      setActiveExerciseIndex((prev) => prev - 1);
     }
+  };
+
+  const toggleExerciseCompletion = (exerciseIndex) => {
+    setCompletedExercises((prev) => {
+      if (prev.includes(exerciseIndex)) {
+        return prev.filter((i) => i !== exerciseIndex);
+      } else {
+        return [...prev, exerciseIndex];
+      }
+    });
   };
 
   const handleFinishTraining = async () => {
-    setSaving(true);
+    setIsTimerRunning(false);
+    const loadingToast = toast.loading('Salvando treino...');
+
     try {
-      const completedExerciseIds = trainingExercises
-        .filter(ex => completedExercises[ex.id])
-        .map(ex => ex.id);
+      // Salva os IDs numéricos originais para manter consistência
+      const completedIds = completedExercises.map(index => training.exercises[index].id);
 
-      await addDoc(collection(db, 'checkIns'), {
+      const checkInData = {
         userId: user.uid,
-        trainingId: training.firestoreId,
+        userEmail: user.email,
+        trainingId: training.id, // Salva o ID numérico (ex: 1)
+        trainingFirestoreId: training.firestoreId, // Salva também o hash por segurança
         trainingName: training.name,
-        completedExercises: completedExerciseIds,
-        totalExercises: totalExercises,
         date: new Date().toISOString(),
-        timestamp: new Date(),
-        duration: startTime ? Math.round((new Date() - startTime) / 60000) : 0
-      });
+        duration: timer,
+        totalExercises: training.exercises.length,
+        completedExercises: completedIds,
+        timestamp: new Date()
+      };
 
-      alert('Treino finalizado com sucesso!');
+      await addDoc(collection(db, 'checkIns'), checkInData);
+      
+      toast.success('Treino concluído! 💪', { id: loadingToast });
       navigate('/history');
-    } catch (err) {
-      alert('Erro ao finalizar treino: ' + err.message);
-      console.error('Erro ao salvar check-in:', err);
-    } finally {
-      setSaving(false);
+    } catch (error) {
+      console.error("Erro ao salvar check-in:", error);
+      toast.error('Erro ao salvar treino.', { id: loadingToast });
+      setIsTimerRunning(true);
     }
   };
 
-  if (!trainingStarted) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={() => navigate('/trainings')}
-            className="mb-6 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500"
-          >
-            ← Voltar
-          </button>
-
-          <div className="bg-white rounded-lg shadow-xl p-8 text-center">
-            <h1 className="text-4xl font-bold text-gray-800 mb-4">{training.name}</h1>
-            
-            <p className="text-gray-600 text-lg mb-6">{training.description}</p>
-
-            <div className="bg-blue-50 rounded-lg p-6 mb-8">
-              <p className="text-gray-700 mb-4">
-                <span className="text-3xl font-bold text-blue-600">{totalExercises}</span>
-                <span className="text-gray-600"> exercícios</span>
-              </p>
-              <p className="text-gray-600 mb-2">Dificuldade: <span className="font-semibold">{training.difficulty}</span></p>
-              <p className="text-gray-600">Tempo estimado: <span className="font-semibold">~45-60 minutos</span></p>
-            </div>
-
-            <div className="space-y-3">
-              <button
-                onClick={handleStartTraining}
-                className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-green-700 transition transform hover:scale-105"
-              >
-                🏋️ Iniciar Treino
-              </button>
-              <button
-                onClick={() => navigate('/trainings')}
-                className="w-full bg-gray-400 text-white py-3 rounded-lg font-semibold hover:bg-gray-500"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
+      <div className="flex justify-center items-center h-screen bg-gray-100 dark:bg-gray-900 transition-colors">
+        <p className="text-xl text-gray-600 dark:text-gray-300">Carregando treino...</p>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">{training.name}</h1>
-          <button
-            onClick={() => navigate('/trainings')}
-            className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500"
-          >
-            ← Voltar
-          </button>
-        </div>
+  if (!training) return null;
 
-        {/* Barra de Progresso */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-gray-700 font-semibold">Progresso Geral</p>
-            <p className="text-2xl font-bold text-green-600">{completedCount}/{totalExercises}</p>
+  const currentExercise = training.exercises[activeExerciseIndex];
+  if (!currentExercise) return <div className="p-8 text-center dark:text-white">Nenhum exercício encontrado.</div>;
+
+  const progress = Math.round((completedExercises.length / training.exercises.length) * 100);
+
+  return (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-4 pb-20 transition-colors duration-300">
+      <div className="max-w-3xl mx-auto">
+        
+        {/* Cabeçalho */}
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg mb-6 sticky top-4 z-10 transition-colors">
+          <div className="flex justify-between items-center mb-2">
+            <h1 className="text-lg font-bold text-gray-800 dark:text-white truncate pr-2">{training.name}</h1>
+            <div className="text-2xl font-mono font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-lg">
+              {formatTime(timer)}
+            </div>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
-            <div
-              className="bg-gradient-to-r from-green-400 to-green-600 h-4 rounded-full transition-all duration-300"
+          
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+            <div 
+              className="bg-green-500 h-3 rounded-full transition-all duration-500" 
               style={{ width: `${progress}%` }}
             ></div>
           </div>
-          <p className="text-gray-600 text-sm mt-2">{progress}% completo</p>
+          <p className="text-xs text-right text-gray-500 dark:text-gray-400 mt-1">
+            {completedExercises.length}/{training.exercises.length} concluídos
+          </p>
         </div>
 
-        {/* Exercício Atual */}
-        {currentExercise && (
-          <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
-            {/* Número do Exercício */}
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <p className="text-sm text-gray-500 font-semibold">EXERCÍCIO {currentExerciseIndex + 1} DE {totalExercises}</p>
-                <h2 className="text-3xl font-bold text-gray-800 mt-2">{currentExercise.name}</h2>
-              </div>
-              <div className="text-right">
-                <input
-                  type="checkbox"
-                  checked={completedExercises[currentExercise.id] || false}
-                  onChange={() => toggleExercise(currentExercise.id)}
-                  className="w-8 h-8 cursor-pointer accent-green-600"
-                />
-                <p className="text-sm text-gray-600 mt-2">Marcar como completo</p>
-              </div>
-            </div>
-
-            {/* Imagem */}
-            <div className="mb-6">
-              <img
-                src={currentExercise.machineImage}
-                alt={currentExercise.name}
-                className="w-full h-64 object-cover rounded-lg"
-                onError={(e) => {
-                  e.target.src = 'https://via.placeholder.com/600x400?text=Sem+imagem';
-                }}
-              />
-            </div>
-
-            {/* Informações do Exercício */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600 font-semibold">Séries</p>
-                <p className="text-3xl font-bold text-blue-600">{currentExercise.sets}</p>
-              </div>
-              <div className="bg-purple-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600 font-semibold">Repetições</p>
-                <p className="text-3xl font-bold text-purple-600">{currentExercise.reps}</p>
-              </div>
-              <div className="bg-orange-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600 font-semibold">Descanso</p>
-                <p className="text-3xl font-bold text-orange-600">{currentExercise.rest}s</p>
-              </div>
-              <div className="bg-pink-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-600 font-semibold">Grupo</p>
-                <p className="text-lg font-bold text-pink-600 capitalize">{currentExercise.muscleGroup}</p>
-              </div>
-            </div>
-
-            {/* Descrição e Execução */}
-            <div className="space-y-4 mb-6">
-              <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">📋 Descrição</p>
-                <p className="text-gray-600">{currentExercise.description}</p>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">🎯 Como Executar</p>
-                <p className="text-gray-600">{currentExercise.execution}</p>
-              </div>
-            </div>
-
-            {/* Botões de Navegação */}
-            <div className="flex gap-3">
-              <button
-                onClick={handlePreviousExercise}
-                disabled={currentExerciseIndex === 0}
-                className="flex-1 bg-gray-400 text-white py-3 rounded-lg font-semibold hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ← Anterior
-              </button>
-              <button
-                onClick={handleNextExercise}
-                disabled={currentExerciseIndex === totalExercises - 1}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Próximo →
-              </button>
+        {/* Card do Exercício */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden transition-colors border border-gray-100 dark:border-gray-700">
+          <div className="relative h-64 bg-gray-200 dark:bg-gray-700">
+            <img 
+              src={currentExercise.machineImage} 
+              alt={currentExercise.name} 
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.src = 'https://via.placeholder.com/400x300?text=Sem+Imagem';
+              }}
+            />
+            <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-sm font-bold">
+              {activeExerciseIndex + 1} / {training.exercises.length}
             </div>
           </div>
-        )}
 
-        {/* Botão de Finalizar */}
-        <div className="flex gap-3">
-          <button
-            onClick={handleFinishTraining}
-            disabled={saving || completedCount === 0}
-            className="flex-1 bg-green-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            {saving ? '⏳ Salvando...' : `✅ Finalizar Treino (${completedCount}/${totalExercises})`}
-          </button>
-          <button
-            onClick={() => navigate('/trainings')}
-            className="flex-1 bg-gray-400 text-white py-4 rounded-lg font-bold text-lg hover:bg-gray-500"
-          >
-            Cancelar
-          </button>
+          <div className="p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{currentExercise.name}</h2>
+              <button
+                onClick={() => toggleExerciseCompletion(activeExerciseIndex)}
+                className={`p-3 rounded-full transition-all transform hover:scale-110 shadow-md ${
+                  completedExercises.includes(activeExerciseIndex)
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-green-100 dark:hover:bg-green-900'
+                }`}
+              >
+                {completedExercises.includes(activeExerciseIndex) ? '✓' : '○'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{currentExercise.sets}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">Séries</span>
+              </div>
+              <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{currentExercise.reps}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">Reps</span>
+              </div>
+              <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{currentExercise.rest}s</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-semibold">Descanso</span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">ℹ️ Instruções</h3>
+                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{currentExercise.description}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-gray-900/50 p-4 flex justify-between items-center border-t border-gray-100 dark:border-gray-700">
+            <button
+              onClick={handlePrevExercise}
+              disabled={activeExerciseIndex === 0}
+              className="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-400 font-medium disabled:opacity-30 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+            >
+              ⬅️ Anterior
+            </button>
+
+            {activeExerciseIndex === training.exercises.length - 1 ? (
+              <button
+                onClick={handleFinishTraining}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-green-600/30 transition transform hover:-translate-y-1"
+              >
+                Finalizar Treino 🏁
+              </button>
+            ) : (
+              <button
+                onClick={handleNextExercise}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-blue-600/30 transition transform hover:-translate-y-1"
+              >
+                Próximo ➡️
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 
 export default function ImportExercises({ onImport, onCancel, loading }) {
-  const [file, setFile] = useState(null);
+  const [, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [errors, setErrors] = useState([]);
   const [success, setSuccess] = useState(false);
