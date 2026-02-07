@@ -12,8 +12,6 @@ export default function HistoryPage() {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        // Busca check-ins do usuário ordenados por data (mais recente primeiro)
-        // Nota: Se der erro de índice no Firestore, o console vai mostrar um link para criar o índice automaticamente.
         const q = query(
           collection(db, 'checkIns'),
           where('userId', '==', user.uid),
@@ -29,12 +27,11 @@ export default function HistoryPage() {
         setHistory(data);
       } catch (error) {
         console.error("Erro ao buscar histórico:", error);
-        // Fallback: Tenta buscar sem ordenação se o índice falhar
+        // Fallback se faltar índice
         try {
             const qFallback = query(collection(db, 'checkIns'), where('userId', '==', user.uid));
             const snap = await getDocs(qFallback);
             const data = snap.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
-            // Ordena no front-end
             data.sort((a, b) => new Date(b.date) - new Date(a.date));
             setHistory(data);
         } catch (err2) {
@@ -113,19 +110,34 @@ export default function HistoryPage() {
                     {formatDate(item.date)}
                   </p>
                   
-                  <div className="flex gap-4 mt-3 text-sm">
-                    <span className="flex items-center text-gray-600 dark:text-gray-300">
+                  <div className="flex flex-wrap gap-4 mt-3 text-sm">
+                    <span className="flex items-center text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50 px-2 py-1 rounded">
                       ⏱️ {formatDuration(item.duration)}
                     </span>
-                    <span className="flex items-center text-gray-600 dark:text-gray-300">
-                      ✅ {item.completedExercises?.length || 0} / {item.totalExercises || 0} exercícios
-                    </span>
+                    
+                    {/* LÓGICA HÍBRIDA: Se tiver 'totalSetsDone' (Novo) mostra séries. Se não, mostra exercícios (Antigo) */}
+                    {item.totalSetsDone !== undefined ? (
+                        <>
+                            <span className="flex items-center text-blue-600 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
+                                🔥 {item.totalSetsDone} Séries Feitas
+                            </span>
+                            {item.totalVolume > 0 && (
+                                <span className="flex items-center text-purple-600 dark:text-purple-400 font-bold bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
+                                    🏋️ {item.totalVolume}kg Volume
+                                </span>
+                            )}
+                        </>
+                    ) : (
+                        <span className="flex items-center text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700/50 px-2 py-1 rounded">
+                            ✅ {item.completedExercises?.length || 0} / {item.totalExercises || 0} exercícios
+                        </span>
+                    )}
                   </div>
                 </div>
 
                 <button 
                     onClick={() => handleDelete(item.firestoreId)}
-                    className="text-gray-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-gray-300 hover:text-red-500 p-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity"
                     title="Apagar registro"
                 >
                     🗑️
