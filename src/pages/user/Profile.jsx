@@ -3,11 +3,13 @@ import { useAuthContext } from '../../hooks/AuthContext';
 import { useTheme } from '../../hooks/ThemeContext';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
+import { useNavigate } from 'react-router-dom'; // <--- IMPORTANTE
 import toast from 'react-hot-toast';
 
 export default function Profile() {
   const { user, logout } = useAuthContext();
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate(); // <--- IMPORTANTE
   
   const [loading, setLoading] = useState(false);
   const [userData, setUserData] = useState({
@@ -17,7 +19,6 @@ export default function Profile() {
     goal: 'Hipertrofia'
   });
 
-  // Carregar dados salvos
   useEffect(() => {
     const fetchUserData = async () => {
       if (!user) return;
@@ -42,7 +43,7 @@ export default function Profile() {
         email: user.email,
         displayName: user.displayName,
         updatedAt: new Date()
-      }, { merge: true }); // Merge evita apagar outros dados
+      }, { merge: true });
       
       toast.success('Perfil atualizado!');
     } catch (error) {
@@ -54,9 +55,10 @@ export default function Profile() {
 
   const calculateIMC = () => {
     if (!userData.weight || !userData.height) return null;
-    const h = Number(userData.height) / 100; // cm para m
+    const h = Number(userData.height) / 100;
     const w = Number(userData.weight);
-    return (w / (h * h)).toFixed(1);
+    const imc = (w / (h * h)).toFixed(1);
+    return isNaN(imc) ? null : imc;
   };
 
   const imc = calculateIMC();
@@ -84,7 +86,6 @@ export default function Profile() {
 
         {/* Configurações */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            {/* Card Tema */}
             <div 
                 onClick={toggleTheme}
                 className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-500 transition-colors group"
@@ -102,7 +103,6 @@ export default function Profile() {
                 </div>
             </div>
 
-            {/* Card IMC */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
                 <p className="text-sm font-bold text-gray-400 uppercase">Seu IMC</p>
                 <div className="flex items-end gap-2 mt-1">
@@ -114,7 +114,17 @@ export default function Profile() {
 
         {/* Formulário de Dados Físicos */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-sm border border-gray-100 dark:border-gray-700 mb-8">
-            <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-6">Dados Corporais</h3>
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-gray-800 dark:text-white">Dados Corporais</h3>
+                
+                {/* BOTÃO NOVO DE ATALHO */}
+                <button 
+                    onClick={() => navigate('/measurements')}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                >
+                    📏 Ver Diário de Medidas →
+                </button>
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
@@ -168,16 +178,23 @@ export default function Profile() {
                  </div>
             </div>
 
+            {/* Botão Atalho Grande */}
+            <button 
+                onClick={() => navigate('/measurements')}
+                className="w-full mt-6 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold py-3 rounded-xl border border-blue-100 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-2"
+            >
+                📊 Abrir Histórico Completo de Medidas
+            </button>
+
             <button 
                 onClick={handleSave}
                 disabled={loading}
-                className="w-full mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-600/20 transition-transform active:scale-95 flex items-center justify-center gap-2"
+                className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-600/20 transition-transform active:scale-95 flex items-center justify-center gap-2"
             >
-                {loading ? 'Salvando...' : 'Salvar Alterações 💾'}
+                {loading ? 'Salvando...' : 'Salvar Dados Básicos 💾'}
             </button>
         </div>
 
-        {/* Botão de Logout */}
         <button 
             onClick={logout}
             className="w-full bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 font-bold py-4 rounded-xl border border-red-100 dark:border-red-900/50 transition-colors flex items-center justify-center gap-2"
@@ -186,7 +203,7 @@ export default function Profile() {
         </button>
         
         <p className="text-center text-xs text-gray-400 mt-6">
-            AcademyUp v1.2 • Feito com 💪
+            AcademyUp v2.0 • Feito com 💪
         </p>
 
       </div>

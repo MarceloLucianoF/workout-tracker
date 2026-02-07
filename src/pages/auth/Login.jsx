@@ -1,121 +1,105 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect } from 'react';
+import { useAuthContext } from '../../hooks/AuthContext';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(true);
-  const [displayName, setDisplayName] = useState(''); // Novo estado
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(null);
-  
-  const { login, signup } = useAuth();
-  const navigate = useNavigate();
+  const { login, error, loading, user } = useAuthContext(); // Puxamos 'user' também
+  const navigate = useNavigate(); // Hook de navegação
+
+  // Se já estiver logado, joga pra home
+  useEffect(() => {
+    if (user) {
+      navigate('/home');
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(null);
-    
-    const loadingToast = toast.loading(isLogin ? 'Autenticando...' : 'Criando conta...');
-
     try {
-      if (isLogin) {
-        await login(email, password);
-        toast.success('Bem-vindo de volta!', { id: loadingToast });
-        navigate('/home'); // Login normal vai pra Home
-      } else {
-        // Cadastro envia o Nome também
-        await signup(email, password, displayName);
-        toast.success('Conta criada com sucesso!', { id: loadingToast });
-        // Redireciona para o Onboarding (Perfil)
-        navigate('/profile?new=true'); 
-      }
+      await login(email, password);
+      // O useEffect acima vai perceber a mudança e redirecionar, 
+      // mas por garantia podemos navegar aqui também se o hook login retornar sucesso
+      navigate('/home');
     } catch (err) {
-      // O hook já traduz o erro, pegamos a mensagem dele ou do catch
-      const msg = err.message || "Ocorreu um erro"; 
-      toast.error(msg, { id: loadingToast });
-      setError(msg);
+      console.error("Erro no login", err);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4 transition-colors duration-300">
-      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 transition-colors duration-300">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
-            {isLogin ? 'Bem-vindo de volta!' : 'Crie sua conta'}
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            {isLogin ? 'Faça login para continuar' : 'Preencha seus dados para começar'}
+    <div className="min-h-screen flex bg-white dark:bg-gray-900 transition-colors">
+      
+      {/* Lado Esquerdo (Visual) */}
+      <div className="hidden lg:flex w-1/2 bg-gradient-to-br from-blue-900 to-black items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=1470&auto=format&fit=crop')] bg-cover bg-center opacity-40 mix-blend-overlay"></div>
+        <div className="relative z-10 p-12 text-white">
+          <h1 className="text-6xl font-black mb-4 tracking-tighter">Academy<span className="text-blue-500">Up</span></h1>
+          <p className="text-xl text-gray-300 max-w-md">
+            "A única repetição ruim é aquela que você não fez."
           </p>
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Lado Direito (Formulário) */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+        <div className="w-full max-w-md space-y-8 animate-fade-in-up">
           
-          {/* Campo Nome - Só aparece no Cadastro */}
-          {!isLogin && (
-            <div className="animate-fade-in">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Seu Nome</label>
-              <input
-                type="text"
-                required
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Ex: Marcelo Filho"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-            <input
-              type="email"
-              required
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Senha</label>
-            <input
-              type="password"
-              required
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="******"
-            />
+          <div className="text-center lg:text-left">
+            <h2 className="lg:hidden text-4xl font-black text-gray-900 dark:text-white mb-2 tracking-tighter">Academy<span className="text-blue-600">Up</span></h2>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Bem-vindo de volta! 👋</h2>
+            <p className="mt-2 text-gray-600 dark:text-gray-400">Digite suas credenciais para acessar sua ficha.</p>
           </div>
 
-          {error && (
-            <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded relative">
-              {error}
+          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+            <div className="space-y-5">
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  placeholder="seu@email.com"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">Senha</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  placeholder="••••••••"
+                />
+              </div>
             </div>
-          )}
 
-          <button
-            type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition duration-200"
-          >
-            {isLogin ? 'Entrar' : 'Cadastrar'}
-          </button>
-        </form>
+            {error && (
+              <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm flex items-center gap-2">
+                ⚠️ {error}
+              </div>
+            )}
 
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError(null);
-            }}
-            className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium"
-          >
-            {isLogin ? 'Não tem uma conta? Cadastre-se' : 'Já tem uma conta? Faça login'}
-          </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg shadow-blue-600/20 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all transform active:scale-95 disabled:opacity-50"
+            >
+              {loading ? 'Entrando...' : 'Entrar na Plataforma'}
+            </button>
+          </form>
+
+          <div className="text-center">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Não tem uma conta?{' '}
+              <Link to="/register" className="font-bold text-blue-600 hover:text-blue-500 transition-colors">
+                Criar conta grátis
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>

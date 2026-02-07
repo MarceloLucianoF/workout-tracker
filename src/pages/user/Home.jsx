@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import WeeklyChart from '../../components/dashboard/WeeklyChart';
@@ -15,8 +15,8 @@ export default function Home() {
   // Estados do Game e Stats
   const [stats, setStats] = useState({ 
     totalTreinos: 0, 
-    totalVolume: 0, // Novo: Carga total levantada
-    totalSets: 0,   // Novo: Séries totais
+    totalVolume: 0, // Carga total levantada
+    totalSets: 0,   // Séries totais
     streak: 0,
     level: 'Iniciante',
     nextLevelTreinos: 10,
@@ -88,19 +88,9 @@ export default function Home() {
     const progress = Math.min(100, Math.max(0, ((totalTreinos - base) / (nextLevelTreinos - base)) * 100));
 
     // 3. Cálculo de Streak (Dias Consecutivos)
-    let currentStreak = 0;
     const today = new Date().setHours(0,0,0,0);
     const uniqueDates = [...new Set(data.map(d => new Date(d.date).setHours(0,0,0,0)))]; 
     
-    if (uniqueDates.includes(today)) {
-      currentStreak = 1;
-    } else {
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      if (uniqueDates.includes(yesterday.getTime())) currentStreak = 0;
-      else currentStreak = 0;
-    }
-
     // Conta streak reverso
     const sortedUnique = uniqueDates.sort((a,b) => b - a);
     let streakCount = 0;
@@ -109,6 +99,7 @@ export default function Home() {
         const lastWorkout = sortedUnique[0];
         const diffDays = (today - lastWorkout) / (1000 * 60 * 60 * 24);
         
+        // Se treinou hoje ou ontem, o streak está vivo
         if (diffDays <= 1) {
             streakCount = 1;
             for (let i = 0; i < sortedUnique.length - 1; i++) {
@@ -153,7 +144,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 transition-colors duration-300">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 transition-colors duration-300 pb-24">
       <div className="max-w-5xl mx-auto space-y-8">
         
         {/* Header de Boas Vindas + Nível */}
@@ -221,7 +212,7 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Card Volume Total (NOVO) */}
+          {/* Card Volume Total */}
           <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-5 text-6xl transform -rotate-12">🏋️</div>
             <p className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase">Carga Total</p>
@@ -235,33 +226,42 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Card Shape / Perfil (NOVO) */}
+          {/* Card Shape / Perfil (ATUALIZADO PARA MEDIDAS) */}
           <div 
-             onClick={() => navigate('/profile')}
-             className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden cursor-pointer hover:border-blue-300 transition-colors"
+             onClick={() => navigate('/measurements')}
+             className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden cursor-pointer hover:border-blue-400 hover:shadow-md transition-all group"
           >
-            <div className="absolute top-0 right-0 p-4 opacity-5 text-6xl transform rotate-12">⚖️</div>
-            <p className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase">Seu Físico</p>
+            <div className="absolute top-0 right-0 p-4 opacity-5 text-6xl transform rotate-12 group-hover:scale-110 transition-transform">⚖️</div>
+            
+            <div className="flex justify-between items-start">
+                <p className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase">Seu Físico</p>
+                <span className="bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300 text-[10px] font-bold px-2 py-1 rounded uppercase">
+                    Ver Evolução
+                </span>
+            </div>
             
             {userProfile?.weight ? (
                 <>
-                    <div className="flex items-baseline gap-2 mt-1">
-                    <h3 className="text-3xl font-bold text-gray-800 dark:text-white">{userProfile.weight}kg</h3>
+                    <div className="flex items-baseline gap-2 mt-2">
+                        <h3 className="text-3xl font-bold text-gray-800 dark:text-white">{userProfile.weight}kg</h3>
                     </div>
-                    <p className="text-xs mt-3 text-blue-600 dark:text-blue-400 font-medium">
-                        Altura: {userProfile.height}cm • Clique para editar
-                    </p>
+                    
+                    <div className="mt-4 flex items-center justify-between text-blue-600 dark:text-blue-400">
+                        <span className="text-xs font-bold">Registrar nova medida</span>
+                        <span className="transform group-hover:translate-x-1 transition-transform">→</span>
+                    </div>
                 </>
             ) : (
-                <div className="mt-2">
-                    <p className="text-gray-800 dark:text-white font-bold">Configurar Perfil</p>
-                    <p className="text-xs text-gray-500">Adicione peso e altura</p>
+                <div className="mt-4">
+                    <p className="text-gray-800 dark:text-white font-bold">Começar Jornada</p>
+                    <p className="text-xs text-gray-500 mb-2">Registre seu peso inicial</p>
+                    <span className="text-blue-600 text-xs font-bold">Configurar agora →</span>
                 </div>
             )}
           </div>
         </div>
 
-        {/* Gráfico Semanal (Mantido) */}
+        {/* Gráfico Semanal */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <WeeklyChart history={history} />
