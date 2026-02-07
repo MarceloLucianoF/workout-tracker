@@ -1,12 +1,14 @@
+// src/pages/user/Profile.jsx
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext'; 
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
+import toast from 'react-hot-toast'; // <--- Import do toast
 
 export default function Profile() {
   const { user, userData, updateLocalUserData } = useAuthContext();
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  // Removido o estado 'message' pois usaremos toasts
 
   const [formData, setFormData] = useState({
     displayName: user?.email || '',
@@ -33,7 +35,6 @@ export default function Profile() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
 
     try {
       const dataToSave = {
@@ -46,10 +47,25 @@ export default function Profile() {
       const userRef = doc(db, 'users', user.uid);
       await setDoc(userRef, dataToSave, { merge: true });
       updateLocalUserData(dataToSave);
-      setMessage('✅ Perfil atualizado com sucesso!');
+      
+      // ✅ Toast de Sucesso
+      toast.success('Perfil atualizado com sucesso!', {
+        duration: 3000,
+        style: {
+          background: '#10B981', // Verde
+          color: '#fff',
+        },
+      });
+
     } catch (error) {
       console.error(error);
-      setMessage('❌ Erro ao atualizar perfil.');
+      // ❌ Toast de Erro
+      toast.error('Erro ao atualizar perfil.', {
+        style: {
+          background: '#EF4444', // Vermelho
+          color: '#fff',
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -59,7 +75,6 @@ export default function Profile() {
     <div className="max-w-2xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">Meu Perfil</h1>
 
-      {/* Container Principal: Branco no claro, Cinza Escuro no escuro */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md transition-colors duration-300">
         
         <div className="flex items-center mb-6">
@@ -74,7 +89,6 @@ export default function Profile() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Campo Idade */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Idade</label>
               <input
@@ -87,7 +101,6 @@ export default function Profile() {
               />
             </div>
             
-            {/* Campo Peso */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Peso (kg)</label>
               <input
@@ -101,7 +114,6 @@ export default function Profile() {
               />
             </div>
             
-            {/* Campo Altura */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Altura (m)</label>
               <input
@@ -123,12 +135,6 @@ export default function Profile() {
           >
             {loading ? 'Salvando...' : 'Salvar Alterações'}
           </button>
-
-          {message && (
-            <div className={`mt-4 p-2 text-center rounded ${message.includes('Erro') ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
-              {message}
-            </div>
-          )}
         </form>
       </div>
     </div>

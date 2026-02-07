@@ -1,6 +1,8 @@
+// src/pages/auth/Login.jsx
 import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast'; // <--- Import do toast
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
@@ -14,14 +16,23 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    
+    // Inicia o toast de loading e guarda o ID dele
+    const loadingToast = toast.loading('Autenticando...');
+
     try {
       if (isLogin) {
         await login(email, password);
+        // Atualiza o toast existente para Sucesso
+        toast.success('Bem-vindo de volta!', { id: loadingToast });
       } else {
         await signup(email, password);
+        toast.success('Conta criada com sucesso!', { id: loadingToast });
       }
       navigate('/home');
     } catch (err) {
+      // Atualiza o toast existente para Erro
+      toast.error('Erro: ' + err.message, { id: loadingToast });
       setError(err.message);
     }
   };

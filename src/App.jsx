@@ -2,7 +2,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './hooks/AuthContext';
-import { ThemeProvider } from './hooks/ThemeContext'; // Importação do ThemeProvider
+import { ThemeProvider } from './hooks/ThemeContext';
+import { Toaster } from 'react-hot-toast'; // <--- Import do Toaster
 
 // Páginas - Auth
 import Login from './pages/auth/Login';
@@ -91,8 +92,22 @@ export default function App() {
   return (
     <Router>
       <AuthProvider>
-        <ThemeProvider> {/* Envolvendo a aplicação com o ThemeProvider */}
+        <ThemeProvider>
           <AppContent />
+          
+          {/* Configuração Global dos Toasts */}
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: '#333',
+                color: '#fff',
+              },
+              // Classes para Dark Mode automático nos toasts
+              className: 'dark:bg-gray-800 dark:text-white dark:border dark:border-gray-700', 
+            }}
+          />
+          
         </ThemeProvider>
       </AuthProvider>
     </Router>
