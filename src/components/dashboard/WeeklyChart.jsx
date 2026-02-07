@@ -1,56 +1,72 @@
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
-export default function WeeklyChart({ data }) {
-  // Se não tiver dados, mostra estado vazio
-  if (!data || data.length === 0) {
-    return (
-      <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700">
-        <p className="text-gray-400 dark:text-gray-500 text-sm">Sem dados de treino esta semana</p>
-      </div>
-    );
-  }
+export default function WeeklyChart({ history }) {
+  // Lógica para calcular treinos dos últimos 7 dias
+  const getLast7Days = () => {
+    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const today = new Date();
+    const last7Days = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      
+      // Conta quantos treinos houve neste dia
+      const count = history.filter(h => {
+        const hDate = new Date(h.date);
+        return hDate.getDate() === d.getDate() && 
+               hDate.getMonth() === d.getMonth() && 
+               hDate.getFullYear() === d.getFullYear();
+      }).length;
+
+      last7Days.push({
+        day: days[d.getDay()],
+        count: count,
+        isToday: i === 0
+      });
+    }
+    return last7Days;
+  };
+
+  const data = getLast7Days();
+  const maxCount = Math.max(...data.map(d => d.count), 1); // Evita divisão por zero
 
   return (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 transition-colors duration-300">
-      <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">
-        Treinos na Semana 📅
-      </h3>
+    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+      <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6">Frequência Semanal</h3>
       
-      <div className="h-64 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <XAxis 
-              dataKey="day" 
-              axisLine={false} 
-              tickLine={false} 
-              tick={{ fill: '#9CA3AF', fontSize: 12 }} 
-              dy={10}
-            />
-            <YAxis 
-              hide 
-            />
-            <Tooltip 
-              cursor={{ fill: 'transparent' }}
-              contentStyle={{ 
-                backgroundColor: '#1F2937', 
-                border: 'none', 
-                borderRadius: '8px', 
-                color: '#fff' 
-              }}
-              itemStyle={{ color: '#fff' }}
-            />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={40}>
-              {data.map((entry, index) => (
-                <Cell 
-                  key={`cell-${index}`} 
-                  fill={entry.count > 0 ? '#3B82F6' : '#E5E7EB'} // Azul se tiver treino, cinza se não
-                  className="dark:opacity-80 transition-all hover:opacity-100"
-                />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="flex items-end justify-between h-32 gap-2">
+        {data.map((item, index) => {
+          // Calcula altura da barra (mínimo 10% para não sumir)
+          const height = item.count > 0 ? (item.count / maxCount) * 100 : 5;
+          
+          return (
+            <div key={index} className="flex flex-col items-center w-full group">
+              
+              {/* Tooltip com quantidade */}
+              <div className="mb-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-gray-800 text-white px-2 py-1 rounded">
+                {item.count} treinos
+              </div>
+
+              {/* A Barra */}
+              <div 
+                className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 ease-out ${
+                  item.count > 0 
+                    ? 'bg-blue-600 dark:bg-blue-500 hover:bg-blue-500' 
+                    : 'bg-gray-100 dark:bg-gray-700'
+                } ${item.isToday ? 'ring-2 ring-offset-2 ring-blue-400 dark:ring-offset-gray-800' : ''}`}
+                style={{ height: `${height}%` }}
+              ></div>
+              
+              {/* Dia da Semana */}
+              <span className={`text-xs mt-3 font-medium ${
+                item.isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
+              }`}>
+                {item.day}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
