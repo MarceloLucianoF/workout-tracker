@@ -3,14 +3,19 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuthContext } from './hooks/AuthContext';
 import { ThemeProvider } from './hooks/ThemeContext';
-import { Toaster } from 'react-hot-toast'; // <--- Import do Toaster
+import { Toaster } from 'react-hot-toast';
 
 // Páginas - Auth
 import Login from './pages/auth/Login';
 
 // Páginas - User
 import Home from './pages/user/Home';
-import TrainingPage from './pages/user/TrainingPage';
+
+// --- CORREÇÃO ABAIXO ---
+import TrainingsPage from './pages/user/TrainingsPage'; // PLURAL (Lista)
+import TrainingPage from './pages/user/TrainingPage';   // SINGULAR (Detalhes) - Tire o 's' do arquivo
+// -----------------------
+
 import TrainingExecutionPage from './pages/user/TrainingExecutionPage';
 import HistoryPage from './pages/user/HistoryPage';
 import Profile from './pages/user/Profile';
@@ -61,14 +66,27 @@ function AppContent() {
             path="/profile" 
             element={<ProtectedRoute><Profile /></ProtectedRoute>} 
           />
+          
+          {/* FLUXO DE TREINO (3 Passos) */}
+          
+          {/* 1. Galeria de Treinos */}
           <Route 
             path="/trainings" 
-            element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} 
+            element={<ProtectedRoute><TrainingsPage /></ProtectedRoute>} 
           />
+          
+          {/* 2. Detalhes do Treino (Antes de começar) */}
           <Route 
             path="/training/:trainingId" 
+            element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} 
+          />
+          
+          {/* 3. Execução do Treino (Cronômetro + Vídeo) */}
+          <Route 
+            path="/execution/:trainingId" 
             element={<ProtectedRoute><TrainingExecutionPage /></ProtectedRoute>} 
           />
+
           <Route 
             path="/history" 
             element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} 
@@ -103,7 +121,6 @@ export default function App() {
                 background: '#333',
                 color: '#fff',
               },
-              // Classes para Dark Mode automático nos toasts
               className: 'dark:bg-gray-800 dark:text-white dark:border dark:border-gray-700', 
             }}
           />

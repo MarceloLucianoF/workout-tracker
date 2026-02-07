@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useAdmin } from '../../hooks/useAdmin';
 import ExerciseForm from '../../components/forms/ExerciseForm';
 import ImportExercises from '../../components/forms/ImportExercises';
+import GifPlayer from '../../components/common/GifPlayer'; // Importe o componente
 
 export default function AdminExercises() {
   const { exercises, loading, error, addExercise, updateExercise, deleteExercise, importExercises } = useAdmin();
@@ -62,7 +63,6 @@ export default function AdminExercises() {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 transition-colors duration-300">
         <div className="max-w-4xl mx-auto">
-          {/* Note: O ExerciseForm precisa ter suporte a dark mode internamente também */}
           <ExerciseForm
             exercise={editingExercise}
             onSubmit={editingExercise ? handleUpdateExercise : handleAddExercise}
@@ -104,7 +104,6 @@ export default function AdminExercises() {
           </div>
         )}
 
-        {/* Barra de Busca */}
         <div className="mb-6">
           <input
             type="text"
@@ -127,19 +126,16 @@ export default function AdminExercises() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredExercises.map(exercise => (
               <div key={exercise.firestoreId} className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 border border-gray-200 dark:border-gray-700">
-                {/* Imagem */}
-                <div className="h-48 bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                  <img
-                    src={exercise.machineImage}
-                    alt={exercise.name}
+                
+                {/* Imagem substituída por GifPlayer */}
+                <div className="h-48 w-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                  <GifPlayer 
+                    src={exercise.machineImage} 
+                    alt={exercise.name} 
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.target.src = 'https://via.placeholder.com/400x300?text=Sem+imagem';
-                    }}
                   />
                 </div>
 
-                {/* Conteúdo */}
                 <div className="p-4">
                   <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">{exercise.name}</h3>
                   
@@ -154,7 +150,6 @@ export default function AdminExercises() {
                     {exercise.description}
                   </p>
 
-                  {/* Botões */}
                   <div className="flex gap-2">
                     <button
                       onClick={() => setSelectedExercise(exercise)}
@@ -182,7 +177,6 @@ export default function AdminExercises() {
         )}
       </div>
 
-      {/* Modal de Detalhes */}
       {selectedExercise && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto transition-colors duration-300">
@@ -197,14 +191,15 @@ export default function AdminExercises() {
             </div>
 
             <div className="space-y-4">
-              <img 
-                src={selectedExercise.machineImage} 
-                alt={selectedExercise.name}
-                className="w-full h-64 object-cover rounded-lg bg-gray-200 dark:bg-gray-700"
-                onError={(e) => {
-                  e.target.src = 'https://via.placeholder.com/400x300?text=Sem+imagem';
-                }}
-              />
+              
+              {/* Imagem no Modal também substituída por GifPlayer */}
+              <div className="w-full h-64 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+                 <GifPlayer 
+                    src={selectedExercise.machineImage} 
+                    alt={selectedExercise.name}
+                    className="w-full h-full object-cover"
+                 />
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -256,7 +251,7 @@ export default function AdminExercises() {
 
               <button
                 onClick={() => setSelectedExercise(null)}
-                className="w-full bg-gray-400 dark:bg-gray-600 text-white py-2 rounded-lg font-semibold hover:bg-gray-500 dark:hover:bg-gray-500 mt-6 transition"
+                className="w-full bg-gray-400 dark:bg-gray-600 text-white py-2 rounded-lg font-semibold hover:bg-gray-50 dark:hover:bg-gray-500 mt-6 transition"
               >
                 Fechar
               </button>
@@ -265,7 +260,6 @@ export default function AdminExercises() {
         </div>
       )}
 
-      {/* Modal de Importação */}
       {showImportModal && (
         <ImportExercises
           onImport={handleImportExercises}

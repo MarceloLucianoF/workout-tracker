@@ -1,11 +1,11 @@
-// src/pages/auth/Login.jsx
 import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast'; // <--- Import do toast
+import toast from 'react-hot-toast';
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
+  const [displayName, setDisplayName] = useState(''); // Novo estado
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -17,23 +17,25 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     
-    // Inicia o toast de loading e guarda o ID dele
-    const loadingToast = toast.loading('Autenticando...');
+    const loadingToast = toast.loading(isLogin ? 'Autenticando...' : 'Criando conta...');
 
     try {
       if (isLogin) {
         await login(email, password);
-        // Atualiza o toast existente para Sucesso
         toast.success('Bem-vindo de volta!', { id: loadingToast });
+        navigate('/home'); // Login normal vai pra Home
       } else {
-        await signup(email, password);
+        // Cadastro envia o Nome também
+        await signup(email, password, displayName);
         toast.success('Conta criada com sucesso!', { id: loadingToast });
+        // Redireciona para o Onboarding (Perfil)
+        navigate('/profile?new=true'); 
       }
-      navigate('/home');
     } catch (err) {
-      // Atualiza o toast existente para Erro
-      toast.error('Erro: ' + err.message, { id: loadingToast });
-      setError(err.message);
+      // O hook já traduz o erro, pegamos a mensagem dele ou do catch
+      const msg = err.message || "Ocorreu um erro"; 
+      toast.error(msg, { id: loadingToast });
+      setError(msg);
     }
   };
 
@@ -45,11 +47,27 @@ export default function Login() {
             {isLogin ? 'Bem-vindo de volta!' : 'Crie sua conta'}
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2">
-            {isLogin ? 'Faça login para continuar' : 'Comece sua jornada fitness hoje'}
+            {isLogin ? 'Faça login para continuar' : 'Preencha seus dados para começar'}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          
+          {/* Campo Nome - Só aparece no Cadastro */}
+          {!isLogin && (
+            <div className="animate-fade-in">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Seu Nome</label>
+              <input
+                type="text"
+                required
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Ex: Marcelo Filho"
+              />
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
             <input
@@ -58,6 +76,7 @@ export default function Login() {
               className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="seu@email.com"
             />
           </div>
           
@@ -69,6 +88,7 @@ export default function Login() {
               className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="******"
             />
           </div>
 
@@ -88,7 +108,10 @@ export default function Login() {
 
         <div className="mt-6 text-center">
           <button
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError(null);
+            }}
             className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium"
           >
             {isLogin ? 'Não tem uma conta? Cadastre-se' : 'Já tem uma conta? Faça login'}

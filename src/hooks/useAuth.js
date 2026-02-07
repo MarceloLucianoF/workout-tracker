@@ -1,29 +1,27 @@
 import { useEffect, useState } from 'react';
-// IMPORTANTE: Adicionei 'db' na importação. Certifique-se que ele é exportado no config.js
-import { authService, db } from '../firebase/config'; 
+import { auth, db } from '../firebase/config'; // Ajustado para 'auth' se seu config exporta como auth, ou mantenha authService
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut,
-  onAuthStateChanged 
+  onAuthStateChanged,
+  updateProfile // <--- Importante: Para atualizar o nome no Auth
 } from 'firebase/auth';
-// Novos imports do Firestore
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // <--- Adicionado setDoc
 
 export function useAuth() {
   const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState(null); // NOVO: Estado para dados do perfil
+  const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(authService, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setLoading(true);
       
       if (currentUser) {
         setUser(currentUser);
         
-        // --- Lógica Nova: Buscar dados do Perfil no Firestore ---
         try {
           const docRef = doc(db, 'users', currentUser.uid);
           const docSnap = await getDoc(docRef);
@@ -31,13 +29,11 @@ export function useAuth() {
           if (docSnap.exists()) {
             setUserData(docSnap.data());
           } else {
-            setUserData({}); // Se não tiver perfil criado ainda
+            setUserData({});
           }
         } catch (err) {
           console.error("Erro ao buscar dados do perfil:", err);
-          // Não travamos o app, apenas logamos o erro
         }
-        // -------------------------------------------------------
 
       } else {
         setUser(null);
@@ -50,15 +46,32 @@ export function useAuth() {
     return unsubscribe;
   }, []);
 
-  const signup = async (email, password) => {
+  // ATUALIZADO: Recebe displayName
+  const signup = async (email, password, displayName) => {
     try {
       setError(null);
       setLoading(true);
-      const result = await createUserWithEmailAndPassword(authService, email, password);
-      // O onAuthStateChanged vai lidar com o state do user
+      
+      // 1. Cria a conta no Auth
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // 2. Atualiza o "Nome de Exibição" no Auth
+      await updateProfile(result.user, { displayName });
+
+      // 3. Cria o documento no Firestore imediatamente
+      await setDoc(doc(db, 'users', result.user.uid), {
+        displayName,
+        email,
+        createdAt: new Date(),
+        age: null,
+        weight: null,
+        height: null,
+      });
+
       return result.user;
     } catch (err) {
-      setError(err.message);
+      console.error(err); // Log para debug
+      setError(firebaseErrorTranslate(err.code)); // Traduz o erro
       throw err;
     } finally {
       setLoading(false);
@@ -69,10 +82,10 @@ export function useAuth() {
     try {
       setError(null);
       setLoading(true);
-      const result = await signInWithEmailAndPassword(authService, email, password);
+      const result = await signInWithEmailAndPassword(auth, email, password);
       return result.user;
     } catch (err) {
-      setError(err.message);
+      setError(firebaseErrorTranslate(err.code));
       throw err;
     } finally {
       setLoading(false);
@@ -83,7 +96,7 @@ export function useAuth() {
     try {
       setError(null);
       setLoading(true);
-      await signOut(authService);
+      await signOut(auth);
       setUser(null);
       setUserData(null);
     } catch (err) {
@@ -94,19 +107,30 @@ export function useAuth() {
     }
   };
 
-  // Função auxiliar para atualizar o estado localmente sem reload
   const updateLocalUserData = (newData) => {
     setUserData((prev) => ({ ...prev, ...newData }));
   };
 
   return { 
     user, 
-    userData, // Exportando dados do perfil
+    userData, 
     loading, 
     error, 
     signup, 
     login, 
     logout,
-    updateLocalUserData // Exportando função de atualização
+    updateLocalUserData 
   };
 }
+
+// Função auxiliar de tradução de erros
+const firebaseErrorTranslate = (code) => {
+  switch (code) {
+    case 'auth/email-already-in-use': return 'Este email já está em uso.';
+    case 'auth/invalid-email': return 'Email inválido.';
+    case 'auth/weak-password': return 'A senha deve ter pelo menos 6 caracteres.';
+    case 'auth/wrong-password': return 'Senha incorreta.';
+    case 'auth/user-not-found': return 'Usuário não encontrado.';
+    default: return 'Ocorreu um erro. Tente novamente.';
+  }
+};

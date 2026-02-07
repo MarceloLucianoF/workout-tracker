@@ -1,4 +1,3 @@
-// src/components/ExerciseForm.jsx
 import React, { useState, useEffect } from 'react';
 
 export default function ExerciseForm({ exercise, onSubmit, onCancel, loading }) {
@@ -28,46 +27,23 @@ export default function ExerciseForm({ exercise, onSubmit, onCancel, loading }) 
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'sets' || name === 'reps' || name === 'rest' || name === 'id' 
-        ? Number(value) 
-        : value
+      [name]: ['sets', 'reps', 'rest', 'id'].includes(name) ? Number(value) : value
     }));
-    // Limpar erro do campo
     if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
+      setErrors(prev => ({ ...prev, [name]: '' }));
     }
   };
 
   const validateForm = () => {
     const newErrors = {};
-
-    if (!formData.id || formData.id <= 0) {
-      newErrors.id = 'ID deve ser um número positivo';
-    }
-    if (!formData.name.trim()) {
-      newErrors.name = 'Nome é obrigatório';
-    }
-    if (formData.sets <= 0) {
-      newErrors.sets = 'Séries deve ser maior que 0';
-    }
-    if (formData.reps <= 0) {
-      newErrors.reps = 'Repetições deve ser maior que 0';
-    }
-    if (formData.rest < 0) {
-      newErrors.rest = 'Descanso não pode ser negativo';
-    }
-    if (!formData.description.trim()) {
-      newErrors.description = 'Descrição é obrigatória';
-    }
-    if (!formData.execution.trim()) {
-      newErrors.execution = 'Execução é obrigatória';
-    }
-    if (!formData.machineImage.trim()) {
-      newErrors.machineImage = 'URL da imagem é obrigatória';
-    }
+    if (!formData.id || formData.id <= 0) newErrors.id = 'ID deve ser positivo';
+    if (!formData.name.trim()) newErrors.name = 'Nome é obrigatório';
+    if (formData.sets <= 0) newErrors.sets = '> 0';
+    if (formData.reps <= 0) newErrors.reps = '> 0';
+    if (formData.rest < 0) newErrors.rest = '>= 0';
+    if (!formData.description.trim()) newErrors.description = 'Obrigatório';
+    if (!formData.execution.trim()) newErrors.execution = 'Obrigatório';
+    if (!formData.machineImage.trim()) newErrors.machineImage = 'URL obrigatória';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -75,127 +51,80 @@ export default function ExerciseForm({ exercise, onSubmit, onCancel, loading }) 
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-
+    if (!validateForm()) return;
     onSubmit(formData);
   };
 
   const muscleGroups = ['peito', 'costas', 'perna', 'ombro', 'braço', 'core'];
   const difficulties = ['iniciante', 'intermediário', 'avançado'];
 
+  // Classes Reutilizáveis (Light + Dark Mode)
+  const inputClasses = (hasError) => `w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors ${hasError ? 'border-red-500 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'}`;
+  const labelClasses = "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2";
+
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md space-y-4">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">
+    <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md space-y-4 transition-colors duration-300">
+      <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">
         {exercise ? 'Editar Exercício' : 'Novo Exercício'}
       </h2>
 
       {/* ID */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          ID do Exercício *
-        </label>
+        <label className={labelClasses}>ID do Exercício *</label>
         <input
           type="number"
           name="id"
           value={formData.id}
           onChange={handleChange}
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-            errors.id ? 'border-red-500' : 'border-gray-300'
-          }`}
+          className={inputClasses(errors.id)}
           placeholder="Ex: 1"
-          disabled={exercise ? true : false}
+          disabled={!!exercise}
         />
         {errors.id && <p className="text-red-500 text-sm mt-1">{errors.id}</p>}
       </div>
 
       {/* Nome */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Nome do Exercício *
-        </label>
+        <label className={labelClasses}>Nome do Exercício *</label>
         <input
           type="text"
           name="name"
           value={formData.name}
           onChange={handleChange}
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-            errors.name ? 'border-red-500' : 'border-gray-300'
-          }`}
+          className={inputClasses(errors.name)}
           placeholder="Ex: Supino Reto Máquina"
         />
         {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
       </div>
 
-      {/* Séries, Repetições, Descanso */}
+      {/* Grid: Séries, Reps, Rest */}
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Séries *
-          </label>
-          <input
-            type="number"
-            name="sets"
-            value={formData.sets}
-            onChange={handleChange}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              errors.sets ? 'border-red-500' : 'border-gray-300'
-            }`}
-            min="1"
-          />
+          <label className={labelClasses}>Séries *</label>
+          <input type="number" name="sets" value={formData.sets} onChange={handleChange} className={inputClasses(errors.sets)} min="1" />
           {errors.sets && <p className="text-red-500 text-sm mt-1">{errors.sets}</p>}
         </div>
-
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Repetições *
-          </label>
-          <input
-            type="number"
-            name="reps"
-            value={formData.reps}
-            onChange={handleChange}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              errors.reps ? 'border-red-500' : 'border-gray-300'
-            }`}
-            min="1"
-          />
+          <label className={labelClasses}>Reps *</label>
+          <input type="number" name="reps" value={formData.reps} onChange={handleChange} className={inputClasses(errors.reps)} min="1" />
           {errors.reps && <p className="text-red-500 text-sm mt-1">{errors.reps}</p>}
         </div>
-
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Descanso (s) *
-          </label>
-          <input
-            type="number"
-            name="rest"
-            value={formData.rest}
-            onChange={handleChange}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              errors.rest ? 'border-red-500' : 'border-gray-300'
-            }`}
-            min="0"
-          />
+          <label className={labelClasses}>Descanso (s) *</label>
+          <input type="number" name="rest" value={formData.rest} onChange={handleChange} className={inputClasses(errors.rest)} min="0" />
           {errors.rest && <p className="text-red-500 text-sm mt-1">{errors.rest}</p>}
         </div>
       </div>
 
       {/* Descrição */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Descrição *
-        </label>
+        <label className={labelClasses}>Descrição *</label>
         <textarea
           name="description"
           value={formData.description}
           onChange={handleChange}
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-            errors.description ? 'border-red-500' : 'border-gray-300'
-          }`}
-          placeholder="Ex: Exercício para peito, ombro e tríceps"
+          className={inputClasses(errors.description)}
+          placeholder="Resumo do exercício..."
           rows="3"
         />
         {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
@@ -203,17 +132,13 @@ export default function ExerciseForm({ exercise, onSubmit, onCancel, loading }) 
 
       {/* Execução */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Como Executar *
-        </label>
+        <label className={labelClasses}>Como Executar *</label>
         <textarea
           name="execution"
           value={formData.execution}
           onChange={handleChange}
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-            errors.execution ? 'border-red-500' : 'border-gray-300'
-          }`}
-          placeholder="Ex: Sente-se com as costas apoiadas..."
+          className={inputClasses(errors.execution)}
+          placeholder="Passo a passo..."
           rows="4"
         />
         {errors.execution && <p className="text-red-500 text-sm mt-1">{errors.execution}</p>}
@@ -221,31 +146,24 @@ export default function ExerciseForm({ exercise, onSubmit, onCancel, loading }) 
 
       {/* URL da Imagem */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          URL da Imagem da Máquina *
-        </label>
+        <label className={labelClasses}>URL da Imagem *</label>
         <input
           type="url"
           name="machineImage"
           value={formData.machineImage}
           onChange={handleChange}
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-            errors.machineImage ? 'border-red-500' : 'border-gray-300'
-          }`}
-          placeholder="Ex: https://via.placeholder.com/400x300?text=Supino"
+          className={inputClasses(errors.machineImage)}
+          placeholder="https://..."
         />
         {errors.machineImage && <p className="text-red-500 text-sm mt-1">{errors.machineImage}</p>}
         
-        {/* Preview da imagem */}
         {formData.machineImage && (
           <div className="mt-3">
             <img 
               src={formData.machineImage} 
               alt="Preview" 
-              className="w-full h-48 object-cover rounded-lg"
-              onError={(e) => {
-                e.target.src = 'https://via.placeholder.com/400x300?text=Erro+na+imagem';
-              }}
+              className="w-full h-48 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
+              onError={(e) => { e.target.src = 'https://via.placeholder.com/400x300?text=Erro+na+imagem'; }}
             />
           </div>
         )}
@@ -253,55 +171,35 @@ export default function ExerciseForm({ exercise, onSubmit, onCancel, loading }) 
 
       {/* URL do Vídeo */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          URL do Vídeo (opcional)
-        </label>
+        <label className={labelClasses}>URL do Vídeo (opcional)</label>
         <input
           type="url"
           name="videoUrl"
           value={formData.videoUrl}
           onChange={handleChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Ex: https://www.youtube.com/watch?v=..."
+          className={inputClasses(false)}
+          placeholder="https://youtube.com..."
         />
       </div>
 
-      {/* Grupo Muscular */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Grupo Muscular *
-        </label>
-        <select
-          name="muscleGroup"
-          value={formData.muscleGroup}
-          onChange={handleChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          {muscleGroups.map(group => (
-            <option key={group} value={group}>
-              {group.charAt(0).toUpperCase() + group.slice(1)}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Dificuldade */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Dificuldade *
-        </label>
-        <select
-          name="difficulty"
-          value={formData.difficulty}
-          onChange={handleChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          {difficulties.map(diff => (
-            <option key={diff} value={diff}>
-              {diff.charAt(0).toUpperCase() + diff.slice(1)}
-            </option>
-          ))}
-        </select>
+      {/* Selects: Grupo e Dificuldade */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className={labelClasses}>Grupo Muscular *</label>
+          <select name="muscleGroup" value={formData.muscleGroup} onChange={handleChange} className={inputClasses(false)}>
+            {muscleGroups.map(group => (
+              <option key={group} value={group}>{group.charAt(0).toUpperCase() + group.slice(1)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClasses}>Dificuldade *</label>
+          <select name="difficulty" value={formData.difficulty} onChange={handleChange} className={inputClasses(false)}>
+            {difficulties.map(diff => (
+              <option key={diff} value={diff}>{diff.charAt(0).toUpperCase() + diff.slice(1)}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Botões */}
@@ -309,14 +207,14 @@ export default function ExerciseForm({ exercise, onSubmit, onCancel, loading }) 
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+          className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
           {loading ? 'Salvando...' : exercise ? 'Atualizar' : 'Criar'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 bg-gray-400 text-white py-2 rounded-lg font-semibold hover:bg-gray-500"
+          className="flex-1 bg-gray-400 dark:bg-gray-600 text-white py-2 rounded-lg font-semibold hover:bg-gray-500 dark:hover:bg-gray-500 transition-colors"
         >
           Cancelar
         </button>
