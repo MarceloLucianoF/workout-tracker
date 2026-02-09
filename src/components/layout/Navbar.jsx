@@ -3,23 +3,66 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuthContext } from '../../hooks/AuthContext';
 import { useAdmin } from '../../hooks/useAdmin';
 
+// --- LOGO DEFINITIVO (Geometry Solid) ---
+const AcademyLogo = ({ className, isWhite = false }) => {
+  // ID único para garantir que o gradiente funcione sempre
+  const uniqueId = "grad_" + Math.random().toString(36).substr(2, 9);
+
+  return (
+    <svg 
+      viewBox="0 0 24 24" 
+      className={className} 
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none" // Importante: Começa vazio
+    >
+      {/* Definição do Gradiente */}
+      {!isWhite && (
+        <defs>
+          <linearGradient id={uniqueId} x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#2563EB" /> {/* Blue-600 */}
+            <stop offset="1" stopColor="#9333EA" /> {/* Purple-600 */}
+          </linearGradient>
+        </defs>
+      )}
+
+      {/* O DESIGN: Um "A" moderno e sólido que aponta para cima.
+        Usa 'fill' (preenchimento) para nunca bugar ou ficar fino demais.
+      */}
+      <path 
+        fillRule="evenodd" 
+        clipRule="evenodd" 
+        d="M12 2L2 21H7L12 11L17 21H22L12 2ZM12 6.5L14.5 11.5H9.5L12 6.5Z" 
+        fill={isWhite ? "white" : `url(#${uniqueId})`}
+      />
+      
+      {/* Um pequeno traço 'tech' embaixo para dar base */}
+      <rect 
+        x="10" 
+        y="18" 
+        width="4" 
+        height="3" 
+        rx="1" 
+        fill={isWhite ? "white" : `url(#${uniqueId})`}
+        className={isWhite ? "opacity-50" : "opacity-40"}
+      />
+    </svg>
+  );
+};
+
 export default function Navbar() {
-  const { user, userProfile } = useAuthContext(); // Agora pegamos o userProfile também
+  const { user, userProfile } = useAuthContext();
   const { isAdmin } = useAdmin();
   const location = useLocation();
 
-  // Função para checar rota ativa (suporta sub-rotas)
   const isActive = (path) => {
     if (path === '/home' && location.pathname === '/') return true;
     return location.pathname.startsWith(path);
   };
 
-  // Lógica inteligente do Avatar
   const avatarUrl = userProfile?.photoURL || user?.photoURL;
   const displayName = userProfile?.displayName || user?.displayName;
   const initial = displayName?.charAt(0).toUpperCase() || 'U';
 
-  // Ícones SVG Otimizados
   const Icons = {
     Home: ({ active }) => (
       <svg className={`w-6 h-6 transition-colors ${active ? 'fill-blue-600 text-blue-600' : 'fill-none text-gray-400'}`} viewBox="0 0 24 24" stroke="currentColor">
@@ -49,10 +92,10 @@ export default function Navbar() {
       <nav className="hidden md:flex bg-white dark:bg-gray-800 shadow-sm border-b border-gray-100 dark:border-gray-700 sticky top-0 z-50 h-20 transition-colors">
         <div className="max-w-7xl mx-auto px-6 w-full flex justify-between items-center">
           
-          {/* Logo */}
-          <Link to="/home" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-2xl text-white shadow-lg shadow-blue-600/20 group-hover:rotate-12 transition-transform">
-              💪
+          {/* Logo Oficial */}
+          <Link to="/home" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 bg-blue-50 dark:bg-gray-700 rounded-xl flex items-center justify-center border border-blue-100 dark:border-gray-600 group-hover:scale-110 transition-transform p-1.5">
+               <AcademyLogo className="w-full h-full" />
             </div>
             <span className="text-2xl font-black text-gray-800 dark:text-white tracking-tighter">
               Academy<span className="text-blue-600">Up</span>
@@ -79,12 +122,11 @@ export default function Navbar() {
             </div>
           )}
 
-          {/* Área do Usuário (Direita) */}
+          {/* Avatar / Login */}
           <div className="flex items-center gap-4">
             {user ? (
               <>
                 <div className="h-8 w-px bg-gray-200 dark:bg-gray-700"></div>
-                
                 <Link to="/profile" className="flex items-center gap-3 group">
                   <div className="text-right hidden lg:block">
                     <p className="text-sm font-bold text-gray-800 dark:text-white group-hover:text-blue-600 transition-colors">
@@ -92,7 +134,6 @@ export default function Navbar() {
                     </p>
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Ver Perfil</p>
                   </div>
-                  
                   <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden border-2 border-transparent group-hover:border-blue-500 transition-all shadow-sm">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt="Perfil" className="w-full h-full object-cover" />
@@ -116,40 +157,36 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* ================= MOBILE NAVBAR (Bottom Bar) ================= */}
+      {/* ================= MOBILE NAVBAR ================= */}
       {user && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 pb-safe z-50">
           <div className="flex justify-between items-center px-6 h-16 relative">
             
-            {/* 1. Home */}
             <Link to="/home" className="flex flex-col items-center justify-center w-12 gap-1 group">
               <Icons.Home active={isActive('/home')} />
               <span className={`text-[10px] font-bold ${isActive('/home') ? 'text-blue-600' : 'text-gray-400'}`}>Home</span>
             </Link>
 
-            {/* 2. Treinos */}
             <Link to="/trainings" className="flex flex-col items-center justify-center w-12 gap-1 group">
               <Icons.Trainings active={isActive('/trainings')} />
               <span className={`text-[10px] font-bold ${isActive('/trainings') ? 'text-blue-600' : 'text-gray-400'}`}>Treinos</span>
             </Link>
 
-            {/* 3. BOTÃO FLUTUANTE CENTRAL (Destaque) */}
+            {/* BOTÃO FLUTUANTE COM LOGO BRANCO */}
             <div className="relative -top-6">
                 <Link 
                   to="/trainings" 
-                  className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-2xl shadow-xl shadow-blue-600/40 border-4 border-gray-50 dark:border-gray-900 transform active:scale-95 transition-all"
+                  className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-2xl shadow-xl shadow-blue-600/40 border-4 border-gray-50 dark:border-gray-900 transform active:scale-95 transition-all p-3"
                 >
-                  💪
+                  <AcademyLogo className="w-full h-full" isWhite={true} />
                 </Link>
             </div>
 
-            {/* 4. Histórico */}
             <Link to="/history" className="flex flex-col items-center justify-center w-12 gap-1 group">
               <Icons.History active={isActive('/history')} />
               <span className={`text-[10px] font-bold ${isActive('/history') ? 'text-blue-600' : 'text-gray-400'}`}>Histórico</span>
             </Link>
 
-            {/* 5. Perfil (Mini Avatar) */}
             <Link to="/profile" className="flex flex-col items-center justify-center w-12 gap-1 group">
               <div className={`w-6 h-6 rounded-full overflow-hidden border ${isActive('/profile') ? 'border-blue-600' : 'border-transparent'}`}>
                  {avatarUrl ? (

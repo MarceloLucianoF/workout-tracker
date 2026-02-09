@@ -6,22 +6,23 @@ import { Toaster } from 'react-hot-toast';
 
 // Páginas - Auth
 import Login from './pages/auth/Login';
-import Register from './pages/auth/Register'; // ✅ ADICIONADO: Import do Registro
+import Register from './pages/auth/Register';
 
 // Páginas - User
 import Home from './pages/user/Home';
 import TrainingsPage from './pages/user/TrainingsPage'; 
-import TrainingPage from './pages/user/TrainingPage';   
+import TrainingPage from './pages/user/TrainingPage';    
 import TrainingExecutionPage from './pages/user/TrainingExecutionPage';
 import HistoryPage from './pages/user/HistoryPage';
 import Profile from './pages/user/Profile';
 import MeasurementsPage from './pages/user/MeasurementsPage';
+import ExerciseAnalytics from './pages/user/ExerciseAnalytics'; // ✅ NOVO IMPORT DA V2.0
 
 // Páginas - Admin
 import AdminPanel from './pages/admin/AdminPanel';
 
 // Componentes
-import Navbar from './components/layout/Navbar'; // ✅ ATUALIZADO: Usando a nova Navbar Responsiva
+import Navbar from './components/layout/Navbar';
 
 // Componente de rota protegida
 const ProtectedRoute = ({ children }) => {
@@ -39,80 +40,48 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
-};
-
-function AppContent() {
-  const { user } = useAuthContext();
-
   return (
     <>
-      {/* Navbar aparece apenas se estiver logado (e dentro dela já tem a lógica Mobile/Desktop) */}
-      {user && <Navbar />} 
+       {/* Navbar renderizada aqui garante que ela só aparece se estiver logado e autorizado */}
+       <Navbar /> 
+       {children}
+    </>
+  );
+};
 
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+// Wrapper para evitar lógica de Hooks fora do Provider
+function AppRoutes() {
+  return (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
         <Routes>
           {/* --- ROTAS PÚBLICAS --- */}
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} /> {/* ✅ ADICIONADO: Rota de Registro */}
+          <Route path="/register" element={<Register />} />
           
-          {/* Redirecionamento da raiz */}
           <Route path="/" element={<Navigate to="/home" replace />} />
           
-          {/* --- ROTAS PROTEGIDAS (Requer Login) --- */}
+          {/* --- ROTAS PROTEGIDAS --- */}
           
-          {/* Dashboard */}
-          <Route 
-            path="/home" 
-            element={<ProtectedRoute><Home /></ProtectedRoute>} 
-          />
+          {/* Dashboard & Perfil */}
+          <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          <Route path="/measurements" element={<ProtectedRoute><MeasurementsPage /></ProtectedRoute>} />
           
-          {/* Perfil */}
-          <Route 
-            path="/profile" 
-            element={<ProtectedRoute><Profile /></ProtectedRoute>} 
-          />
-          {/* Medidas Corporais */}
-          <Route 
-            path="/measurements" 
-            element={<ProtectedRoute><MeasurementsPage /></ProtectedRoute>} 
-          />
-          {/* FLUXO DE TREINO */}
-          {/* 1. Galeria */}
-          <Route 
-            path="/trainings" 
-            element={<ProtectedRoute><TrainingsPage /></ProtectedRoute>} 
-          />
+          {/* Fluxo de Treino */}
+          <Route path="/trainings" element={<ProtectedRoute><TrainingsPage /></ProtectedRoute>} />
+          <Route path="/training/:trainingId" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
+          <Route path="/execution/:trainingId" element={<ProtectedRoute><TrainingExecutionPage /></ProtectedRoute>} />
           
-          {/* 2. Detalhes (Antes de começar) */}
-          <Route 
-            path="/training/:trainingId" 
-            element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} 
-          />
+          {/* Histórico & Analytics */}
+          <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+          <Route path="/analytics/:exerciseName" element={<ProtectedRoute><ExerciseAnalytics /></ProtectedRoute>} /> {/* ✅ ROTA V2.0 */}
           
-          {/* 3. Execução (Cronômetro + Vídeo) */}
-          <Route 
-            path="/execution/:trainingId" 
-            element={<ProtectedRoute><TrainingExecutionPage /></ProtectedRoute>} 
-          />
+          {/* Admin */}
+          <Route path="/admin/*" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
 
-          {/* Histórico */}
-          <Route 
-            path="/history" 
-            element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} 
-          />
-          
-          {/* Painel Administrativo */}
-          <Route 
-            path="/admin/*" 
-            element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} 
-          />
-
-          {/* Rota 404 - Redireciona para Home */}
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -121,16 +90,12 @@ export default function App() {
     <Router>
       <AuthProvider>
         <ThemeProvider>
-          <AppContent />
+          <AppRoutes />
           
-          {/* Configuração Global dos Toasts (Notificações) */}
           <Toaster 
             position="top-right"
             toastOptions={{
-              style: {
-                background: '#333',
-                color: '#fff',
-              },
+              style: { background: '#333', color: '#fff' },
               className: 'dark:bg-gray-800 dark:text-white dark:border dark:border-gray-700', 
             }}
           />
