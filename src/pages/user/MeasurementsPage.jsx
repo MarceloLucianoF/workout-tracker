@@ -1,196 +1,261 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { collection, query, where, orderBy, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
+
+// --- GRÁFICO DE LINHA (SVG Puro) ---
+const WeightChart = ({ data }) => {
+  if (!data || data.length < 2) {
+    return (
+      <div className="h-48 flex flex-col items-center justify-center bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-400 text-sm">
+        <span>📉</span>
+        <p>Registre pelo menos 2 medidas para ver o gráfico.</p>
+      </div>
+    );
+  }
+
+  // Configs
+  const height = 200;
+  const width = 600; // ViewBox width
+  const padding = 20;
+
+  // Escalas
+  const maxVal = Math.max(...data.map(d => d.value)) + 2; // +2kg de respiro
+  const minVal = Math.min(...data.map(d => d.value)) - 2; // -2kg de respiro
+  const range = maxVal - minVal || 1;
+
+  // Pontos (X, Y)
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * (width - padding * 2) + padding;
+    const y = height - ((d.value - minVal) / range) * (height - padding * 2) - padding;
+    return `${x},${y}`;
+  }).join(' ');
+
+  // Pontos para Área (Gradiente abaixo da linha)
+  const areaPoints = `${padding},${height} ${points} ${width - padding},${height}`;
+
+  return (
+    <div className="w-full overflow-hidden bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Evolução de Peso</h3>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
+        <defs>
+          <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        
+        {/* Área Sombreada */}
+        <polygon points={areaPoints} fill="url(#gradient)" />
+
+        {/* Linha Guia Média */}
+        <line x1={padding} y1={height/2} x2={width-padding} y2={height/2} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="5" opacity="0.3" />
+
+        {/* Linha Principal */}
+        <polyline fill="none" stroke="#3b82f6" strokeWidth="3" points={points} strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Pontos (Bolinhas) */}
+        {data.map((d, i) => {
+           const x = (i / (data.length - 1)) * (width - padding * 2) + padding;
+           const y = height - ((d.value - minVal) / range) * (height - padding * 2) - padding;
+           return (
+             <g key={i} className="group cursor-pointer">
+               <circle cx={x} cy={y} r="4" className="fill-white stroke-blue-500 stroke-2 group-hover:r-6 transition-all" />
+               <rect x={x - 20} y={y - 35} width="40" height="20" rx="4" fill="black" className="opacity-0 group-hover:opacity-80 transition-opacity" />
+               <text x={x} y={y - 21} textAnchor="middle" fill="white" fontSize="10" className="opacity-0 group-hover:opacity-100 pointer-events-none font-bold">
+                 {d.value}kg
+               </text>
+             </g>
+           );
+        })}
+      </svg>
+      
+      {/* Legenda X (Datas) */}
+      <div className="flex justify-between mt-2 text-[10px] text-gray-400 font-mono px-2">
+         <span>{data[0].dateFormatted}</span>
+         <span>{data[data.length-1].dateFormatted}</span>
+      </div>
+    </div>
+  );
+};
 
 export default function MeasurementsPage() {
   const { user } = useAuthContext();
-  const [logs, setLogs] = useState([]);
+  const navigate = useNavigate();
+  
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [newWeight, setNewWeight] = useState('');
+  const [showInput, setShowInput] = useState(false);
 
-  // Estado do Formulário
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    weight: '',
-    bodyFat: '',
-    chest: '',
-    arms: '',
-    waist: '',
-    thighs: '',
-    calves: ''
-  });
-
-  // Carregar Histórico
   useEffect(() => {
-    const fetchMeasurements = async () => {
-      if (!user) return;
-      try {
-        const q = query(
-          collection(db, 'measurements'),
-          where('userId', '==', user.uid),
-          orderBy('date', 'desc')
-        );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-        setLogs(data);
-      } catch (error) {
-        console.error("Erro ao buscar medidas:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMeasurements();
+    fetchHistory();
   }, [user]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const loadingToast = toast.loading('Salvando medidas...');
-    
+  const fetchHistory = async () => {
+    if (!user) return;
     try {
-      // 1. Salva no histórico de medidas
-      const newLog = {
-        userId: user.uid,
-        ...formData,
-        timestamp: new Date()
-      };
-      const docRef = await addDoc(collection(db, 'measurements'), newLog);
+      const q = query(
+        collection(db, 'measurements'),
+        where('userId', '==', user.uid),
+        orderBy('date', 'asc')
+      );
+      const snap = await getDocs(q);
       
-      // 2. Atualiza o Peso Atual no Perfil do Usuário (Para aparecer na Home)
-      if (formData.weight) {
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, { weight: formData.weight });
-      }
+      const data = snap.docs.map(doc => {
+          const d = doc.data();
+          return {
+              id: doc.id,
+              ...d,
+              value: Number(d.weight), // Garante número para o gráfico
+              dateFormatted: new Date(d.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+          };
+      });
 
-      // Atualiza lista local
-      setLogs(prev => [{ firestoreId: docRef.id, ...newLog }, ...prev]);
-      setShowForm(false);
-      toast.success('Medidas registradas! 📉', { id: loadingToast });
-      
+      setHistory(data);
     } catch (error) {
       console.error(error);
-      toast.error('Erro ao salvar.', { id: loadingToast });
+      toast.error("Erro ao carregar histórico");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddMeasurement = async (e) => {
+    e.preventDefault();
+    if (!newWeight) return;
+
+    const toastId = toast.loading("Salvando...");
+    try {
+        const weightValue = parseFloat(newWeight.replace(',', '.'));
+        const now = new Date().toISOString();
+
+        // 1. Salva no histórico
+        await addDoc(collection(db, 'measurements'), {
+            userId: user.uid,
+            weight: weightValue,
+            date: now,
+            type: 'weight'
+        });
+
+        // 2. Atualiza o peso atual no Perfil do Usuário (Para a Home)
+        await updateDoc(doc(db, 'users', user.uid), {
+            weight: weightValue,
+            lastMeasurementDate: now
+        });
+
+        toast.success("Peso registrado! ⚖️", { id: toastId });
+        setNewWeight('');
+        setShowInput(false);
+        fetchHistory(); // Recarrega gráfico
+
+    } catch (error) {
+        toast.error("Erro ao salvar", { id: toastId });
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Apagar este registro?')) {
+      if(!window.confirm("Apagar este registro?")) return;
       try {
-        await deleteDoc(doc(db, 'measurements', id));
-        setLogs(prev => prev.filter(item => item.firestoreId !== id));
-        toast.success('Registro apagado.');
-      } catch (error) {
-        toast.error('Erro ao apagar.');
-      }
-    }
+          await deleteDoc(doc(db, 'measurements', id));
+          toast.success("Apagado.");
+          fetchHistory();
+      } catch (e) { toast.error("Erro ao apagar"); }
   };
 
-  const formatDate = (dateString) => {
-    const [year, month, day] = dateString.split('-');
-    return `${day}/${month}/${year}`;
-  };
+  // Variação Total
+  const startWeight = history.length > 0 ? history[0].value : 0;
+  const currentWeight = history.length > 0 ? history[history.length - 1].value : 0;
+  const diff = currentWeight - startWeight;
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center dark:bg-gray-900"><div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div></div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 transition-colors duration-300 pb-24">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8 transition-colors duration-300 pb-24">
+      <div className="max-w-2xl mx-auto space-y-6">
         
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Evolução Corporal 📏</h1>
-          <button 
-            onClick={() => setShowForm(!showForm)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow-lg transition-transform active:scale-95"
-          >
-            {showForm ? 'Cancelar' : '+ Nova Medição'}
-          </button>
+        {/* Header */}
+        <div className="flex justify-between items-center">
+            <button onClick={() => navigate('/home')} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white font-bold flex items-center gap-2">
+                ← Voltar
+            </button>
+            <h1 className="text-xl font-bold text-gray-800 dark:text-white">Medidas Corporais</h1>
+            <div className="w-8"></div>
         </div>
 
-        {/* Formulário de Adição */}
-        {showForm && (
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 mb-8 animate-fade-in">
-            <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className="col-span-2 md:col-span-4">
-                    <label className="text-xs font-bold text-gray-500 uppercase">Data</label>
-                    <input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full p-2 rounded bg-gray-50 dark:bg-gray-700 dark:text-white border border-gray-200 dark:border-gray-600" />
+        {/* Card Resumo */}
+        <div className="bg-gradient-to-br from-indigo-500 to-blue-600 rounded-3xl p-6 text-white shadow-lg relative overflow-hidden">
+            <div className="relative z-10 flex justify-between items-end">
+                <div>
+                    <p className="text-indigo-100 text-xs font-bold uppercase mb-1">Peso Atual</p>
+                    <h2 className="text-4xl font-black">{currentWeight > 0 ? currentWeight : '--'} <span className="text-lg font-medium opacity-80">kg</span></h2>
                 </div>
-                
-                {/* Campos de Medidas */}
-                {[
-                  { label: 'Peso (kg)', key: 'weight', icon: '⚖️' },
-                  { label: '% Gordura', key: 'bodyFat', icon: '💧' },
-                  { label: 'Peitoral (cm)', key: 'chest', icon: '👕' },
-                  { label: 'Braços (cm)', key: 'arms', icon: '💪' },
-                  { label: 'Cintura (cm)', key: 'waist', icon: '👖' },
-                  { label: 'Coxas (cm)', key: 'thighs', icon: '🍗' },
-                  { label: 'Panturrilha (cm)', key: 'calves', icon: '🦵' },
-                ].map((field) => (
-                  <div key={field.key}>
-                    <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
-                      {field.icon} {field.label}
-                    </label>
-                    <input 
-                      type="number" 
-                      step="0.1"
-                      value={formData[field.key]} 
-                      onChange={e => setFormData({...formData, [field.key]: e.target.value})} 
-                      className="w-full p-2 rounded bg-gray-50 dark:bg-gray-700 dark:text-white border border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none" 
-                    />
-                  </div>
-                ))}
-              </div>
-              <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-colors">
-                Salvar Registro 💾
-              </button>
-            </form>
-          </div>
-        )}
+                {history.length > 1 && (
+                    <div className={`text-right ${diff <= 0 ? 'text-green-300' : 'text-yellow-300'}`}>
+                        <p className="text-2xl font-bold">{diff > 0 ? '+' : ''}{diff.toFixed(1)}kg</p>
+                        <p className="text-[10px] uppercase opacity-80">Desde o início</p>
+                    </div>
+                )}
+            </div>
+            <div className="absolute -right-4 -bottom-8 text-8xl opacity-10 rotate-12">⚖️</div>
+        </div>
 
-        {/* Lista de Histórico */}
-        {loading ? (
-           <div className="text-center py-10"><div className="animate-spin inline-block w-8 h-8 border-4 border-blue-500 rounded-full border-t-transparent"></div></div>
-        ) : logs.length === 0 ? (
-           <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-             <p className="text-gray-500">Nenhum registro ainda. Tire suas medidas hoje!</p>
-           </div>
+        {/* Botão Adicionar (Toggle) */}
+        {!showInput ? (
+            <button 
+                onClick={() => setShowInput(true)}
+                className="w-full bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 font-bold py-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all flex items-center justify-center gap-2"
+            >
+                <span>➕</span> Registrar Novo Peso
+            </button>
         ) : (
-          <div className="space-y-4">
-            {logs.map((log) => (
-              <div key={log.firestoreId} className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4 relative group hover:border-blue-300 transition-colors">
-                
-                {/* Data e Peso (Destaque) */}
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                   <div className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 p-3 rounded-lg text-center min-w-[80px]">
-                      <span className="block text-xs font-bold uppercase">{new Date(log.date).toLocaleString('default', { month: 'short' })}</span>
-                      <span className="block text-2xl font-bold leading-none">{new Date(log.date).getDate()}</span>
-                   </div>
-                   <div>
-                      <h3 className="text-2xl font-bold text-gray-800 dark:text-white">
-                        {log.weight ? `${log.weight}kg` : '--'}
-                      </h3>
-                      {log.bodyFat && <p className="text-xs text-gray-500">{log.bodyFat}% Gordura</p>}
-                   </div>
+            <form onSubmit={handleAddMeasurement} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-lg border border-blue-100 dark:border-blue-900 animate-fade-in-down">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Novo Peso (kg)</label>
+                <div className="flex gap-2">
+                    <input 
+                        type="number" 
+                        step="0.1" 
+                        value={newWeight} 
+                        onChange={e => setNewWeight(e.target.value)} 
+                        placeholder="Ex: 75.5" 
+                        className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-bold text-lg"
+                        autoFocus
+                    />
+                    <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-lg font-bold">Salvar</button>
+                    <button type="button" onClick={() => setShowInput(false)} className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-4 rounded-lg font-bold">✕</button>
                 </div>
-
-                {/* Grid de Medidas Secundárias */}
-                <div className="grid grid-cols-3 md:grid-cols-5 gap-x-6 gap-y-2 text-sm text-gray-600 dark:text-gray-300 w-full md:w-auto">
-                    {log.chest && <div><span className="text-xs text-gray-400 block">Peito</span>{log.chest}cm</div>}
-                    {log.arms && <div><span className="text-xs text-gray-400 block">Braço</span>{log.arms}cm</div>}
-                    {log.waist && <div><span className="text-xs text-gray-400 block">Cintura</span>{log.waist}cm</div>}
-                    {log.thighs && <div><span className="text-xs text-gray-400 block">Coxa</span>{log.thighs}cm</div>}
-                    {log.calves && <div><span className="text-xs text-gray-400 block">Pantu</span>{log.calves}cm</div>}
-                </div>
-
-                <button 
-                  onClick={() => handleDelete(log.firestoreId)}
-                  className="absolute top-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-2"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
+            </form>
         )}
+
+        {/* Gráfico */}
+        <WeightChart data={history} />
+
+        {/* Histórico Lista */}
+        <div>
+            <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase mb-4 ml-1">Histórico Recente</h3>
+            <div className="space-y-3">
+                {[...history].reverse().map((item) => (
+                    <div key={item.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl flex justify-between items-center shadow-sm border border-gray-50 dark:border-gray-700 group">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 dark:text-blue-400 text-sm font-bold">
+                                {item.value}
+                            </div>
+                            <div>
+                                <p className="text-gray-800 dark:text-white font-bold text-sm">Registro de Peso</p>
+                                <p className="text-xs text-gray-400">
+                                    {new Date(item.date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                </p>
+                            </div>
+                        </div>
+                        <button onClick={() => handleDelete(item.id)} className="text-gray-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            🗑️
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
 
       </div>
     </div>
