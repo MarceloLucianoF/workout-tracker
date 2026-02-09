@@ -1,18 +1,92 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, getDoc, limit } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import WeeklyChart from '../../components/dashboard/WeeklyChart';
 
+// --- SUB-COMPONENTS (For cleaner code) ---
+
+const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart }) => {
+  // Simple Logic: Find the next letter or rotate back to A
+  // This could be smarter in V3 (based on muscle recovery)
+  
+  let nextTraining = trainings[0]; // Default
+  
+  if (lastWorkoutId && trainings.length > 0) {
+      const lastIndex = trainings.findIndex(t => t.firestoreId === lastWorkoutId);
+      if (lastIndex !== -1 && lastIndex < trainings.length - 1) {
+          nextTraining = trainings[lastIndex + 1];
+      } else {
+          nextTraining = trainings[0]; // Loop back to A
+      }
+  }
+
+  if (!nextTraining) return null;
+
+  return (
+    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 shadow-lg shadow-blue-600/20 text-white relative overflow-hidden mb-8">
+        <div className="absolute top-0 right-0 opacity-10 text-9xl transform translate-x-10 -translate-y-4 pointer-events-none">🔥</div>
+        
+        <div className="relative z-10">
+            <span className="bg-white/20 backdrop-blur-md text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-3 inline-block">
+                Recomendado Hoje
+            </span>
+            <h2 className="text-2xl font-black mb-1">{nextTraining.name}</h2>
+            <p className="text-blue-100 text-sm mb-6 max-w-md line-clamp-1">{nextTraining.description || "Foco total no progresso."}</p>
+            
+            <div className="flex items-center gap-4">
+                <button 
+                    onClick={() => onStart(nextTraining.firestoreId)}
+                    className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex items-center gap-2"
+                >
+                    <span>▶</span> Iniciar Agora
+                </button>
+                <div className="text-xs font-bold text-blue-100 hidden sm:block">
+                    ⏱ ~45 min • 📋 {nextTraining.exercises?.length || 0} Exercícios
+                </div>
+            </div>
+        </div>
+    </div>
+  );
+};
+
+const ConsistencyCard = ({ history }) => {
+    // Calculate workouts in last 14 days
+    const now = new Date();
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const recentWorkouts = history.filter(h => new Date(h.date) >= twoWeeksAgo).length;
+    
+    let status = "Começando 🚀";
+    let color = "text-blue-500";
+    if(recentWorkouts >= 8) { status = "Imparável 🔥"; color = "text-orange-500"; }
+    else if(recentWorkouts >= 4) { status = "Constante 💪"; color = "text-green-500"; }
+
+    return (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <div className="flex justify-between items-start mb-2">
+                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider">Consistência (14 dias)</h3>
+                <span className={`text-xs font-bold ${color}`}>{status}</span>
+            </div>
+            <div className="flex items-end gap-1">
+                <span className="text-4xl font-black text-gray-800 dark:text-white">{recentWorkouts}</span>
+                <span className="text-sm text-gray-400 font-bold mb-1">treinos</span>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Mantenha o ritmo para evoluir.</p>
+        </div>
+    );
+};
+
 export default function Home() {
   const { user } = useAuthContext();
   const navigate = useNavigate();
+  
   const [history, setHistory] = useState([]);
+  const [trainings, setTrainings] = useState([]); // List of available trainings
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  // Stats Calculados
+  // Stats
   const [stats, setStats] = useState({ 
     totalTreinos: 0, 
     totalVolume: 0,
@@ -31,18 +105,22 @@ export default function Home() {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) setUserProfile(userDoc.data());
 
-        // 2. Histórico Completo (Para totais)
-        const q = query(
+        // 2. Histórico Completo
+        const qHistory = query(
           collection(db, 'checkIns'), 
           where('userId', '==', user.uid),
           orderBy('date', 'desc')
         );
-        
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(d => d.data());
+        const historySnap = await getDocs(qHistory);
+        const historyData = historySnap.docs.map(d => d.data());
+        setHistory(historyData);
+        calculateGamification(historyData);
 
-        setHistory(data);
-        calculateGamification(data);
+        // 3. Treinos Disponíveis (Para recomendação)
+        const qTrainings = query(collection(db, 'trainings'), orderBy('name', 'asc')); // Simple order A-Z
+        const trainingSnap = await getDocs(qTrainings);
+        const trainingList = trainingSnap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+        setTrainings(trainingList);
 
       } catch (error) {
         console.error("Erro Home:", error);
@@ -56,11 +134,9 @@ export default function Home() {
 
   const calculateGamification = (data) => {
     const totalTreinos = data.length;
-    
-    // Soma Volume Total (Tonelagem)
     const volumeAcumulado = data.reduce((acc, curr) => acc + (Number(curr.totalVolume) || 0), 0);
 
-    // Sistema de Níveis RPG
+    // RPG Logic
     let level = 'Iniciante 🌱';
     let nextLevel = 10;
     
@@ -69,7 +145,6 @@ export default function Home() {
     else if (totalTreinos >= 25) { level = 'Atleta 🏃'; nextLevel = 50; }
     else if (totalTreinos >= 10) { level = 'Focado 🧠'; nextLevel = 25; }
 
-    // Calcula base do nível anterior
     let base = 0;
     if (totalTreinos >= 10) base = 10;
     if (totalTreinos >= 25) base = 25;
@@ -77,14 +152,12 @@ export default function Home() {
     
     const progress = Math.min(100, Math.max(0, ((totalTreinos - base) / (nextLevel - base)) * 100));
 
-    // Cálculo de Streak (Dias Consecutivos)
+    // Streak Logic
     const uniqueDates = [...new Set(data.map(d => new Date(d.date).toISOString().split('T')[0]))].sort().reverse();
     let streak = 0;
-    
     if (uniqueDates.length > 0) {
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-        
         if (uniqueDates[0] === today || uniqueDates[0] === yesterday) {
             streak = 1;
             for (let i = 0; i < uniqueDates.length - 1; i++) {
@@ -92,7 +165,6 @@ export default function Home() {
                 const prev = new Date(uniqueDates[i+1]);
                 const diffTime = Math.abs(curr - prev);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                
                 if (diffDays === 1) streak++;
                 else break;
             }
@@ -114,167 +186,144 @@ export default function Home() {
       return `${kg}kg`;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center dark:bg-gray-900"><div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div></div>;
 
-  // --- PREPARAÇÃO DE DADOS VISUAIS ---
-  // Prioriza dados do perfil (Firestore), depois Auth, depois Fallback
-  const currentName = userProfile?.displayName || user?.displayName || 'Atleta';
-  const firstName = currentName.split(' ')[0];
+  const firstName = (userProfile?.displayName || user?.displayName || 'Atleta').split(' ')[0];
   const photoURL = userProfile?.photoURL || user?.photoURL;
+  const lastWorkoutId = history.length > 0 ? history[0].trainingId : null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8 transition-colors duration-300 pb-32">
-      <div className="max-w-6xl mx-auto space-y-8">
+      <div className="max-w-5xl mx-auto space-y-8">
         
-        {/* Header Principal */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <div className="flex items-center gap-4 w-full md:w-auto">
-                
-                {/* LÓGICA DO AVATAR NA HOME */}
-                <div 
-                    onClick={() => navigate('/profile')}
-                    className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-blue-500/20 cursor-pointer hover:opacity-90 transition-opacity bg-gray-200 dark:bg-gray-700 shrink-0"
-                >
+        {/* 1. Header Minimalista */}
+        <div className="flex justify-between items-center px-2">
+            <div className="flex items-center gap-3">
+                <div onClick={() => navigate('/profile')} className="w-12 h-12 rounded-full overflow-hidden shadow-sm border-2 border-white dark:border-gray-700 cursor-pointer">
                     {photoURL ? (
-                        <img 
-                            src={photoURL} 
-                            alt="Perfil" 
-                            className="w-full h-full object-cover" 
-                        />
+                        <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl text-white font-bold">
-                            {firstName.charAt(0).toUpperCase()}
+                        <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                            {firstName[0]}
                         </div>
                     )}
                 </div>
-
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
-                        Olá, {firstName}! 👋
-                    </h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Vamos superar seus limites hoje?</p>
+                    <h1 className="text-xl font-bold text-gray-800 dark:text-white">Olá, {firstName}!</h1>
+                    <div className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                        <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">{stats.level}</span>
+                    </div>
                 </div>
             </div>
-
-            <div className="flex items-center gap-4 w-full md:w-auto">
-                <div className="flex-1 md:flex-initial">
-                    <div className="flex justify-between text-xs font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wide">
-                        <span>Nível: {stats.level}</span>
-                        <span>{stats.totalTreinos}/{stats.nextLevelTreinos}</span>
-                    </div>
-                    <div className="w-full md:w-48 h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div 
-                            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-1000"
-                            style={{ width: `${stats.progress}%` }}
-                        ></div>
-                    </div>
-                </div>
-                
-                <button 
-                    onClick={() => navigate('/trainings')}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-600/20 active:scale-95 transition-all whitespace-nowrap"
-                >
-                    Treinar 🔥
-                </button>
+            
+            {/* Streak Badge */}
+            <div className="text-center">
+                <div className="text-2xl">🔥</div>
+                <div className="text-xs font-bold text-gray-600 dark:text-gray-300">{stats.streak} dias</div>
             </div>
         </div>
 
-        {/* Grid de Estatísticas */}
+        {/* 2. PRODUTO: Recomendação Inteligente */}
+        <RecommendedWorkoutCard 
+            lastWorkoutId={lastWorkoutId} 
+            trainings={trainings} 
+            onStart={(id) => navigate(`/training/${id}`)}
+        />
+
+        {/* 3. Grid de KPIs Psicológicos */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Card Streak */}
-            <div className="bg-gradient-to-br from-orange-500 to-red-500 p-6 rounded-2xl text-white shadow-lg relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-4 text-6xl opacity-20 transform rotate-12 group-hover:scale-110 transition-transform">🔥</div>
-                <p className="text-orange-100 text-xs font-bold uppercase tracking-wider">Ofensiva</p>
-                <h3 className="text-4xl font-black mt-1">{stats.streak} <span className="text-lg font-medium opacity-80">dias</span></h3>
-                <p className="text-xs text-orange-50 mt-2 opacity-80">Mantenha o foco!</p>
-            </div>
-
-            {/* Card Volume */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 group">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Carga Total</p>
-                        <h3 className="text-3xl font-black text-gray-800 dark:text-white mt-1">{formatVolume(stats.totalVolume)}</h3>
-                    </div>
-                    <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg text-purple-600 dark:text-purple-400">⚡</div>
+            {/* Próxima Meta */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Próxima Meta 🎯</h3>
+                <div className="flex justify-between items-end mb-2">
+                    <span className="text-3xl font-black text-gray-800 dark:text-white">{stats.nextLevelTreinos}</span>
+                    <span className="text-xs font-bold text-gray-400 mb-1">treinos</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">Levantados em sua jornada</p>
-            </div>
-
-            {/* Card Treinos */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 group">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Missões</p>
-                        <h3 className="text-3xl font-black text-gray-800 dark:text-white mt-1">{stats.totalTreinos}</h3>
-                    </div>
-                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg text-blue-600 dark:text-blue-400">✅</div>
+                <div className="w-full bg-gray-100 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                    <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${stats.progress}%` }}></div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">Treinos concluídos com sucesso</p>
+                <p className="text-xs text-gray-400 mt-2 text-right">Faltam {stats.nextLevelTreinos - stats.totalTreinos}</p>
             </div>
 
-            {/* Card Perfil/Peso */}
+            <ConsistencyCard history={history} />
+
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Volume Total</h3>
+                <div className="flex items-end gap-1">
+                    <span className="text-3xl font-black text-gray-800 dark:text-white">{formatVolume(stats.totalVolume)}</span>
+                </div>
+                <p className="text-xs text-purple-500 mt-2 font-bold">Levantados até hoje</p>
+            </div>
+
             <div 
                 onClick={() => navigate('/measurements')}
-                className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-300 transition-colors group"
+                className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-300 transition-colors"
             >
                 <div className="flex justify-between items-start">
                     <div>
-                        <p className="text-gray-400 text-xs font-bold uppercase tracking-wider">Peso Atual</p>
-                        <h3 className="text-3xl font-black text-gray-800 dark:text-white mt-1">
-                            {userProfile?.weight ? `${userProfile.weight}kg` : '--'}
-                        </h3>
+                        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Peso Corporal</h3>
+                        <span className="text-3xl font-black text-gray-800 dark:text-white">{userProfile?.weight || '--'}kg</span>
                     </div>
-                    <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg text-green-600 dark:text-green-400">⚖️</div>
+                    <span className="text-2xl">⚖️</span>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-blue-500 mt-2 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                    Atualizar medidas →
-                </div>
+                <p className="text-xs text-blue-500 mt-2 font-bold">Atualizar medidas →</p>
             </div>
         </div>
 
-        {/* Área Principal Grid (Gráfico + Última Atividade) */}
+        {/* 4. Gráfico e Última Conquista */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 h-full">
+            <div className="lg:col-span-2">
+                <div className="mb-4 flex items-center justify-between">
+                    <h3 className="font-bold text-gray-700 dark:text-white">Frequência Semanal</h3>
+                    <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">Mantenha o foco!</span>
+                </div>
                 <WeeklyChart history={history} />
             </div>
 
-            {/* Última Atividade */}
+            {/* Resumo Rico da Última Atividade */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
-                <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
-                    Última Conquista
-                </h3>
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-6">Última Conquista</h3>
                 
                 {history.length > 0 ? (
-                    <div className="flex-1 flex flex-col justify-center items-center text-center py-4">
-                        <div className="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center text-4xl mb-4 animate-bounce-slow">
-                            🏆
+                    <div className="flex-1 flex flex-col">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-14 h-14 bg-yellow-100 dark:bg-yellow-900/30 rounded-2xl flex items-center justify-center text-3xl">
+                                🏆
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-lg text-gray-800 dark:text-white leading-tight">
+                                    {history[0].trainingName}
+                                </h4>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {new Date(history[0].date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                </p>
+                            </div>
                         </div>
-                        <h4 className="font-bold text-xl text-gray-800 dark:text-white mb-1">
-                            {history[0].trainingName}
-                        </h4>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                            {new Date(history[0].date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                        </p>
+
+                        {/* Mini Stats do último treino */}
+                        <div className="grid grid-cols-2 gap-3 mb-6">
+                            <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl">
+                                <p className="text-[10px] text-gray-400 uppercase font-bold">Tempo</p>
+                                <p className="font-mono font-bold text-gray-800 dark:text-white">{Math.floor(history[0].duration / 60)} min</p>
+                            </div>
+                            <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl">
+                                <p className="text-[10px] text-gray-400 uppercase font-bold">Volume</p>
+                                <p className="font-mono font-bold text-gray-800 dark:text-white">{history[0].totalVolume}kg</p>
+                            </div>
+                        </div>
                         
                         <button 
                             onClick={() => navigate('/history')}
-                            className="w-full py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                            className="w-full mt-auto py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
                         >
                             Ver Histórico Completo
                         </button>
                     </div>
                 ) : (
                     <div className="flex-1 flex flex-col justify-center items-center text-center py-8 text-gray-400">
-                        <div className="text-4xl mb-2">💤</div>
-                        <p>Nenhum treino registrado ainda.</p>
-                        <p className="text-xs mt-2">Bora começar hoje?</p>
+                        <p>Nenhum treino ainda.</p>
+                        <button onClick={() => navigate('/trainings')} className="text-blue-500 font-bold text-sm mt-2">Começar Jornada</button>
                     </div>
                 )}
             </div>

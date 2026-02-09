@@ -1,416 +1,326 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { collection, getDocs, doc, getDoc, addDoc, query, where, orderBy, limit } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../../hooks/AuthContext';
-import toast from 'react-hot-toast';
-import VideoModal from '../../components/common/VideoModal';
-import confetti from 'canvas-confetti';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '../../firebase/config';
 
-const RestTimerOverlay = ({ seconds, totalTime, onSkip, onAdd }) => {
-  const percentage = totalTime > 0 ? ((totalTime - seconds) / totalTime) * 100 : 0;
+// --- GRÁFICO PRO (Layout Espaçoso) ---
+const ProgressChart = ({ data }) => {
+  if (!data || data.length === 0) return (
+    <div className="h-64 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 text-gray-400 text-sm">
+        <span className="text-2xl mb-2">📉</span>
+        <p>Sem dados suficientes.</p>
+    </div>
+  );
+
+  // 1. AUMENTAR A RESOLUÇÃO E MARGENS
+  // Usamos um canvas de 300x150 para ter mais precisão no posicionamento
+  const width = 300; 
+  const height = 150;
+  const paddingX = 30; // Margem lateral (evita cortar bolinha na borda)
+  const paddingY = 35; // Margem vertical (Espaço para texto EM CIMA e EMBAIXO)
+
+  // 2. Processamento
+  const points = data.map(d => ({
+      val: Number(d.weight),
+      label: d.weight + 'kg',
+      date: d.dateStr
+  }));
+
+  const values = points.map(p => p.val);
+  let maxVal = Math.max(...values);
+  let minVal = Math.min(...values);
+
+  // Correção de Escala (Evita linha reta)
+  if (maxVal === minVal) {
+      maxVal += 10;
+      minVal = Math.max(0, minVal - 10);
+  } else {
+      const spread = maxVal - minVal;
+      maxVal += spread * 0.2; // 20% de respiro
+      minVal = Math.max(0, minVal - spread * 0.2);
+  }
+
+  const range = maxVal - minVal;
+
+  // 3. Funções de Coordenadas (Mapeia valor -> pixel)
+  const getX = (index) => {
+      if (points.length === 1) return width / 2;
+      return paddingX + (index / (points.length - 1)) * (width - (paddingX * 2));
+  };
+
+  const getY = (val) => {
+      const normalized = (val - minVal) / range;
+      // Inverte Y e mapeia para a área segura (dentro do padding)
+      return (height - paddingY) - (normalized * (height - (paddingY * 2)));
+  };
+
+  // 4. Caminhos SVG
+  const linePath = points.map((p, i) => `${getX(i)},${getY(p.val)}`).join(' ');
+  // Fecha a área embaixo da linha até o "chão" (height - paddingY)
+  const areaPath = `${getX(0)},${height} ${linePath} ${getX(points.length - 1)},${height}`;
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900/95 backdrop-blur-xl animate-fade-in text-white p-6">
-      <div className="text-center mb-10">
-        <h2 className="text-3xl font-black mb-2 tracking-tight">DESCANSO</h2>
-        <p className="text-gray-400 font-medium">Recupere o fôlego...</p>
+    <div className="w-full bg-white dark:bg-gray-800 rounded-3xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm relative">
+      
+      {/* Título */}
+      <div className="flex justify-between items-center mb-2 px-2">
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Evolução (kg)</span>
+          <span className="text-xs font-bold text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded">
+             Max: {Math.max(...values)}kg
+          </span>
       </div>
-      <div className="relative w-72 h-72 flex items-center justify-center mb-12">
-        <svg className="absolute top-0 left-0 w-full h-full transform -rotate-90 drop-shadow-2xl">
-          <circle cx="144" cy="144" r="130" stroke="#334155" strokeWidth="16" fill="transparent" />
-          <circle cx="144" cy="144" r="130" stroke="#3b82f6" strokeWidth="16" fill="transparent" 
-            strokeDasharray={2 * Math.PI * 130}
-            strokeDashoffset={2 * Math.PI * 130 * (percentage / 100)}
-            strokeLinecap="round" className="transition-all duration-1000 ease-linear" />
+
+      {/* Container SVG Responsivo */}
+      <div className="w-full aspect-[2/1]">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+            
+            {/* Gradiente */}
+            <defs>
+                <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4" />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                </linearGradient>
+            </defs>
+            
+            {/* Linhas Guia (Grid) */}
+            <line x1={paddingX} y1={paddingY} x2={width-paddingX} y2={paddingY} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4" className="opacity-10" />
+            <line x1={paddingX} y1={height-paddingY} x2={width-paddingX} y2={height-paddingY} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4" className="opacity-10" />
+
+            {/* Área Sombreada */}
+            {points.length > 1 && (
+                <polygon points={areaPath} fill="url(#chartGradient)" />
+            )}
+
+            {/* Linha Principal */}
+            {points.length > 1 && (
+                <polyline
+                    fill="none"
+                    stroke="#2563EB"
+                    strokeWidth="3"
+                    points={linePath}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                />
+            )}
+            
+            {/* Pontos e Textos */}
+            {points.map((p, i) => {
+                const cx = getX(i);
+                const cy = getY(p.val);
+                
+                // Lógica para não cortar texto nas pontas
+                let textAnchor = "middle";
+                if (i === 0) textAnchor = "start";
+                if (i === points.length - 1) textAnchor = "end";
+
+                // Só mostra data no primeiro, último e talvez no meio se tiver muitos pontos
+                const showDate = i === 0 || i === points.length - 1 || (points.length > 4 && i === Math.floor(points.length/2));
+
+                return (
+                    <g key={i}>
+                        {/* Linha vertical pontilhada até o chão */}
+                        <line 
+                            x1={cx} y1={cy} 
+                            x2={cx} y2={height - paddingY} 
+                            stroke="#3b82f6" 
+                            strokeWidth="1" 
+                            strokeDasharray="2" 
+                            className="opacity-20"
+                        />
+
+                        {/* Círculo */}
+                        <circle 
+                            cx={cx} 
+                            cy={cy} 
+                            r="4" 
+                            fill="#fff" 
+                            stroke="#2563EB" 
+                            strokeWidth="2" 
+                        />
+                        
+                        {/* Texto do Peso (ACIMA do ponto) */}
+                        <text 
+                            x={cx} 
+                            y={cy - 12} 
+                            textAnchor="middle" 
+                            fill="currentColor" 
+                            className="text-[10px] fill-gray-700 dark:fill-white font-bold"
+                            style={{ fontSize: '10px' }}
+                        >
+                            {p.label}
+                        </text>
+
+                        {/* Texto da Data (EMBAIXO do gráfico, na área de padding) */}
+                        {showDate && (
+                            <text 
+                                x={cx} 
+                                y={height - 10} // Posição fixa no rodapé
+                                textAnchor={textAnchor} 
+                                fill="currentColor" 
+                                className="text-[9px] fill-gray-400 font-mono uppercase"
+                                style={{ fontSize: '9px' }}
+                            >
+                                {p.date}
+                            </text>
+                        )}
+                    </g>
+                );
+            })}
         </svg>
-        <div className="flex flex-col items-center">
-             <span className="text-8xl font-black tracking-tighter">{seconds}</span>
-             <span className="text-sm text-blue-400 font-bold uppercase tracking-widest mt-2">Segundos</span>
-        </div>
-      </div>
-      <div className="w-full max-w-sm grid grid-cols-2 gap-4">
-        <button onClick={onSkip} className="bg-gray-800 hover:bg-gray-700 py-4 rounded-2xl font-bold text-white transition-colors">Pular</button>
-        <button onClick={onAdd} className="bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold text-white shadow-lg shadow-blue-600/30 transition-colors">+30s</button>
       </div>
     </div>
   );
 };
 
-export default function TrainingExecutionPage() {
-  const { trainingId } = useParams();
+export default function ExerciseAnalytics() {
+  const { exerciseName } = useParams();
   const { user } = useAuthContext();
   const navigate = useNavigate();
-  const location = useLocation(); // Pegar estado da navegação
-
-  const [training, setTraining] = useState(null);
+  
+  const [history, setHistory] = useState([]);
+  const [stats, setStats] = useState({ pr: 0, totalReps: 0, count: 0 });
   const [loading, setLoading] = useState(true);
-  const [activeExerciseIndex, setActiveExerciseIndex] = useState(0);
-  const [showVideo, setShowVideo] = useState(false);
-  const [globalTimer, setGlobalTimer] = useState(0);
-  const [isGlobalPaused, setIsGlobalPaused] = useState(false);
-  
-  const [setsLog, setSetsLog] = useState({});
-  const [historyMap, setHistoryMap] = useState({}); // Mapa { "Nome Exercício": Peso }
-  
-  const [isResting, setIsResting] = useState(false);
-  const [restSeconds, setRestSeconds] = useState(0);
-  const [totalRestTime, setTotalRestTime] = useState(0);
-  const restAudioRef = useRef(new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'));
+
+  const cleanName = decodeURIComponent(exerciseName || "");
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!user || !cleanName) return;
+
       try {
-        const docRef = doc(db, 'trainings', trainingId);
-        const trainingSnap = await getDoc(docRef);
-
-        if (!trainingSnap.exists()) {
-          toast.error('Treino não encontrado!');
-          navigate('/trainings');
-          return;
-        }
-
-        const trainingData = trainingSnap.data();
-        let exercisesToUse = [];
-
-        // 1. Verifica se veio lista personalizada do TrainingPage
-        if (location.state?.customExerciseList) {
-            exercisesToUse = location.state.customExerciseList;
-        } else {
-            // Se não (acesso direto ou refresh), hidrata do banco normal
-            const exercisesSnap = await getDocs(collection(db, 'exercises'));
-            const allExercises = exercisesSnap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
-            
-            exercisesToUse = (trainingData.exercises || [])
-              .map(exId => {
-                 const idStr = String(exId);
-                 return allExercises.find(e => String(e.firestoreId) === idStr || String(e.id) === idStr);
-              })
-              .filter(Boolean);
-        }
-
-        if (exercisesToUse.length === 0) {
-            toast.error("Treino vazio.");
-            navigate('/trainings');
-            return;
-        }
-
-        const fullTraining = { 
-            firestoreId: trainingSnap.id, 
-            ...trainingData, 
-            exercises: exercisesToUse 
-        };
-        
-        setTraining(fullTraining);
-
-        // 2. Busca Histórico Inteligente (Último checkin desse treino)
-        const historyQ = query(
-            collection(db, 'checkIns'),
+        const q = query(
+            collection(db, 'checkIns'), 
             where('userId', '==', user.uid),
-            // where('trainingId', '==', trainingId), // Removido para buscar globalmente por nome do exercício
-            orderBy('date', 'desc'),
-            limit(5) // Pega os últimos 5 treinos gerais para varrer
+            orderBy('date', 'asc')
         );
-        const historySnap = await getDocs(historyQ);
-        
-        const loadMap = {};
-        // Varre histórico para encontrar última carga de cada exercício pelo NOME
-        // (Isso funciona mesmo se mudar a ordem ou o treino)
-        historySnap.docs.forEach(doc => {
+        const snapshot = await getDocs(q);
+
+        const logs = [];
+        let maxWeight = 0;
+        let sumReps = 0;
+
+        snapshot.docs.forEach(doc => {
             const data = doc.data();
-            if (data.exercises) {
-                data.exercises.forEach(ex => {
-                    // Se ainda não achamos carga pra esse nome, salva a mais recente
-                    if (!loadMap[ex.name]) {
-                        // Pega a maior carga usada nas séries desse exercício
-                        const maxWeight = Math.max(...(ex.sets?.map(s => Number(s.weight) || 0) || [0]));
-                        if (maxWeight > 0) loadMap[ex.name] = maxWeight;
+            
+            if (data.exercises && Array.isArray(data.exercises)) {
+                const exerciseData = data.exercises.find(ex => ex.name === cleanName);
+                
+                if (exerciseData && exerciseData.sets) {
+                    const bestSet = exerciseData.sets.reduce((prev, current) => 
+                        (Number(current.weight) > Number(prev.weight) ? current : prev), { weight: 0 });
+
+                    const totalRepsToday = exerciseData.sets.reduce((acc, curr) => acc + (Number(curr.reps) || 0), 0);
+
+                    if (Number(bestSet.weight) > 0) {
+                        logs.push({
+                            date: data.date,
+                            dateStr: new Date(data.date).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}),
+                            weight: Number(bestSet.weight),
+                            reps: totalRepsToday
+                        });
+                        
+                        if (Number(bestSet.weight) > maxWeight) maxWeight = Number(bestSet.weight);
+                        sumReps += totalRepsToday;
                     }
-                });
+                }
             }
         });
-        setHistoryMap(loadMap);
 
-        // 3. Preenche Logs Iniciais (Auto-fill com histórico)
-        const initialLog = {};
-        exercisesToUse.forEach((ex, index) => {
-          const sets = [];
-          const suggestedWeight = loadMap[ex.name] || ''; // Auto-fill weight!
-          
-          for (let i = 0; i < (ex.sets || 3); i++) {
-            sets.push({ 
-                weight: suggestedWeight, // Já inicia preenchido!
-                reps: ex.reps || '', 
-                completed: false 
-            });
-          }
-          initialLog[index] = sets;
-        });
-        setSetsLog(initialLog);
+        setHistory(logs);
+        setStats({ pr: maxWeight, totalReps: sumReps, count: logs.length });
 
       } catch (error) {
-        console.error(error);
-        toast.error('Erro ao carregar dados.');
+        console.error("Erro analytics:", error);
       } finally {
         setLoading(false);
       }
     };
-    if (trainingId && user) fetchData();
-  }, [trainingId, user, navigate, location.state]);
 
-  useEffect(() => {
-    let interval;
-    if (!loading && training && !isGlobalPaused) interval = setInterval(() => setGlobalTimer(t => t + 1), 1000);
-    return () => clearInterval(interval);
-  }, [loading, training, isGlobalPaused]);
+    fetchData();
+  }, [user, cleanName]);
 
-  useEffect(() => {
-    let interval;
-    if (isResting && restSeconds > 0) {
-      interval = setInterval(() => {
-        setRestSeconds(prev => {
-           if (prev <= 1) {
-             restAudioRef.current.play().catch(() => {});
-             setIsResting(false);
-             return 0;
-           }
-           return prev - 1;
-        });
-      }, 1000);
-    } else if (isResting && restSeconds === 0) setIsResting(false);
-    return () => clearInterval(interval);
-  }, [isResting, restSeconds]);
-
-  const handleInputChange = (exerciseIdx, setIdx, field, value) => {
-    setSetsLog(prev => {
-      const newLog = { ...prev };
-      const exerciseSets = [...(newLog[exerciseIdx] || [])];
-      exerciseSets[setIdx] = { ...exerciseSets[setIdx], [field]: value };
-      newLog[exerciseIdx] = exerciseSets;
-      return newLog;
-    });
-  };
-
-  const toggleSetCompletion = (exerciseIdx, setIdx) => {
-    setSetsLog(prev => {
-      const newLog = { ...prev };
-      const exerciseSets = [...(newLog[exerciseIdx] || [])];
-      const targetSet = { ...exerciseSets[setIdx] };
-      
-      const isCompletingNow = !targetSet.completed;
-      targetSet.completed = isCompletingNow;
-
-      if (isCompletingNow) {
-        const totalSets = training.exercises[exerciseIdx].sets;
-        if (setIdx < totalSets - 1) {
-            const restTime = training.exercises[exerciseIdx].rest || 60;
-            setRestSeconds(restTime);
-            setTotalRestTime(restTime);
-            setIsResting(true);
-        }
-      }
-      
-      exerciseSets[setIdx] = targetSet;
-      newLog[exerciseIdx] = exerciseSets;
-      return newLog;
-    });
-  };
-
-  const handleFinishTraining = async () => {
-    setIsGlobalPaused(true);
-    const loadingToast = toast.loading('Salvando...');
-
-    try {
-      let totalSetsDone = 0;
-      let totalVolume = 0;
-      
-      const finalExercisesLog = training.exercises.map((ex, exIdx) => {
-          const sets = setsLog[exIdx] || [];
-          const cleanSets = sets.map(s => {
-              if(s.completed) {
-                  totalSetsDone++;
-                  totalVolume += (Number(s.weight) || 0) * (Number(s.reps) || 0);
-              }
-              return { weight: s.weight, reps: s.reps, completed: s.completed };
-          });
-          return { name: ex.name, sets: cleanSets };
-      });
-
-      const checkInData = {
-        userId: user.uid,
-        userEmail: user.email,
-        trainingId: training.firestoreId,
-        trainingName: training.name,
-        date: new Date().toISOString(),
-        duration: globalTimer,
-        exercises: finalExercisesLog,
-        totalSetsDone,
-        totalVolume,
-        timestamp: new Date()
-      };
-
-      await addDoc(collection(db, 'checkIns'), checkInData);
-      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
-      toast.success('Treino Salvo!', { id: loadingToast });
-      navigate('/history');
-
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao salvar.', { id: loadingToast });
-      setIsGlobalPaused(false);
-    }
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
-
-  if (loading || !training) return <div className="h-screen bg-gray-900"></div>;
-
-  const currentExercise = training.exercises[activeExerciseIndex];
-  const currentSets = setsLog[activeExerciseIndex] || [];
-  const progress = ((activeExerciseIndex + 1) / training.exercises.length) * 100;
+  if (loading) return <div className="min-h-screen flex items-center justify-center dark:bg-gray-900"><div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div></div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-safe transition-colors duration-300 flex flex-col">
-      
-      {/* 1. Header Fixo: Progresso e Timer */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-30 pt-safe">
-         <div className="h-1 bg-gray-200 dark:bg-gray-700 w-full">
-            <div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${progress}%` }}></div>
-         </div>
-         <div className="flex justify-between items-center px-4 py-3">
-            <button onClick={() => navigate('/home')} className="text-gray-400 hover:text-red-500 font-bold">✕ Sair</button>
-            
-            {/* BOTÃO PAUSE RESGATADO */}
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8 pb-32 transition-colors duration-300">
+      <div className="max-w-3xl mx-auto space-y-6">
+        
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-6">
             <button 
-                onClick={() => setIsGlobalPaused(!isGlobalPaused)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border font-mono font-bold transition-all ${
-                    isGlobalPaused 
-                    ? 'bg-yellow-100 text-yellow-700 border-yellow-300 animate-pulse' 
-                    : 'bg-gray-100 dark:bg-gray-700 text-blue-600 dark:text-blue-400 border-transparent'
-                }`}
+                onClick={() => navigate(-1)} 
+                className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 shadow-sm flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
-                {isGlobalPaused ? '⏸ PAUSADO' : `⏱ ${formatTime(globalTimer)}`}
-            </button>
-
-            <button onClick={() => setShowVideo(true)} className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
-                🎥 Vídeo
-            </button>
-         </div>
-      </div>
-
-      {/* 2. Área do Exercício (Scrollável) */}
-      <div className="flex-1 overflow-y-auto pb-32">
-         
-         {/* GIF "Imersivo" (Loop Infinito) */}
-         <div className="relative aspect-square w-full max-h-[35vh] bg-black">
-            <img 
-                src={currentExercise.machineImage} 
-                alt="Exercise" 
-                className="w-full h-full object-contain"
-            />
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4 pt-10">
-                <h2 className="text-2xl font-bold text-white leading-tight">{currentExercise.name}</h2>
-                <div className="flex items-center gap-2 mt-1">
-                    <span className="text-gray-300 text-xs uppercase font-bold tracking-wider">{currentExercise.muscleGroup}</span>
-                    {historyMap[currentExercise.name] && (
-                        <span className="text-[10px] bg-white/20 text-white px-2 py-0.5 rounded backdrop-blur-md">
-                            Última Carga: {historyMap[currentExercise.name]}kg
-                        </span>
-                    )}
-                </div>
-            </div>
-         </div>
-
-         {/* Controles de Série */}
-         <div className="p-4 space-y-4">
-            <div className="space-y-3">
-                {currentSets.map((set, idx) => (
-                    <div 
-                        key={idx} 
-                        className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all ${
-                            set.completed 
-                            ? 'bg-green-50 dark:bg-green-900/10 border-green-500 dark:border-green-600' 
-                            : 'bg-white dark:bg-gray-800 border-transparent shadow-sm border-gray-100 dark:border-gray-700'
-                        }`}
-                    >
-                        <div className="flex flex-col items-center justify-center w-8">
-                            <span className="text-xs font-bold text-gray-400">SET</span>
-                            <span className="text-lg font-black text-gray-700 dark:text-gray-300">{idx + 1}</span>
-                        </div>
-
-                        {/* Input Peso (PREENCHIDO AUTOMATICO SE TIVER HISTORICO) */}
-                        <div className="flex-1">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Kg</label>
-                            <input 
-                                type="number" 
-                                value={set.weight} 
-                                onChange={(e) => handleInputChange(activeExerciseIndex, idx, 'weight', e.target.value)}
-                                placeholder={historyMap[currentExercise.name] || '0'}
-                                className="w-full bg-gray-100 dark:bg-gray-700/50 rounded-xl px-3 py-2 text-center font-bold text-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                            />
-                        </div>
-
-                        <div className="flex-1">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Reps</label>
-                            <input 
-                                type="number" 
-                                value={set.reps} 
-                                onChange={(e) => handleInputChange(activeExerciseIndex, idx, 'reps', e.target.value)}
-                                placeholder="0"
-                                className="w-full bg-gray-100 dark:bg-gray-700/50 rounded-xl px-3 py-2 text-center font-bold text-lg text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                            />
-                        </div>
-
-                        <button 
-                            onClick={() => toggleSetCompletion(activeExerciseIndex, idx)}
-                            className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl shadow-sm transition-transform active:scale-90 ${
-                                set.completed 
-                                ? 'bg-green-500 text-white' 
-                                : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                            }`}
-                        >
-                            {set.completed ? '✓' : ''}
-                        </button>
-                    </div>
-                ))}
-            </div>
-         </div>
-      </div>
-
-      {/* 3. Rodapé de Navegação */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 p-4 pb-safe z-30">
-         <div className="flex gap-3">
-             <button 
-                onClick={() => setActiveExerciseIndex(p => Math.max(0, p - 1))}
-                disabled={activeExerciseIndex === 0}
-                className="px-6 py-4 rounded-xl font-bold bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 disabled:opacity-50"
-             >
                 ←
-             </button>
+            </button>
+            <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">Evolução</p>
+                <h1 className="text-2xl font-black text-gray-800 dark:text-white leading-tight break-words">
+                    {cleanName}
+                </h1>
+            </div>
+        </div>
 
-             {activeExerciseIndex < training.exercises.length - 1 ? (
-                 <button 
-                    onClick={() => setActiveExerciseIndex(p => p + 1)}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all"
-                 >
-                    Próximo Exercício →
-                 </button>
-             ) : (
-                 <button 
-                    onClick={handleFinishTraining}
-                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-600/20 active:scale-95 transition-all"
-                 >
-                    FINALIZAR TREINO 🏆
-                 </button>
-             )}
-         </div>
+        {history.length === 0 ? (
+            <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
+                <span className="text-4xl block mb-2">📊</span>
+                <h3 className="text-lg font-bold text-gray-700 dark:text-white">Sem dados suficientes</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Continue treinando para gerar gráficos!
+                </p>
+            </div>
+        ) : (
+            <>
+                {/* Cards de Stats */}
+                <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg shadow-blue-600/20">
+                        <p className="text-[10px] font-bold opacity-80 uppercase">Recorde (PR)</p>
+                        <h3 className="text-2xl font-black">{stats.pr}kg</h3>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Volume Total</p>
+                        <h3 className="text-2xl font-black text-gray-800 dark:text-white">{stats.totalReps}</h3>
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Treinos</p>
+                        <h3 className="text-2xl font-black text-gray-800 dark:text-white">{stats.count}</h3>
+                    </div>
+                </div>
+
+                {/* Gráfico (Novo) */}
+                <div>
+                    <ProgressChart data={history} />
+                </div>
+
+                {/* Lista Histórico */}
+                <div>
+                    <h3 className="font-bold text-gray-800 dark:text-white mb-4 mt-8 flex items-center gap-2">
+                        <span>📅</span> Diário Detalhado
+                    </h3>
+                    <div className="space-y-3">
+                        {[...history].reverse().map((log, i) => (
+                            <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex justify-between items-center hover:border-blue-200 transition-colors">
+                                <div>
+                                    <p className="text-sm font-bold text-gray-800 dark:text-white capitalize">
+                                        {new Date(log.date).toLocaleDateString('pt-BR', {weekday: 'long', day:'numeric', month:'long'})}
+                                    </p>
+                                    <p className="text-xs text-gray-400">{log.reps} repetições totais</p>
+                                </div>
+                                <div className="text-right">
+                                    <div className="flex items-center gap-2 justify-end">
+                                        <span className="text-lg font-black text-blue-600 dark:text-blue-400">{log.weight}kg</span>
+                                        {log.weight === stats.pr && <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-bold shadow-sm">PR 🏆</span>}
+                                    </div>
+                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Carga Máxima</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </>
+        )}
       </div>
-
-      {isResting && <RestTimerOverlay seconds={restSeconds} totalTime={totalRestTime} onSkip={() => setIsResting(false)} onAdd={() => setRestSeconds(s => s + 30)} />}
-      {showVideo && <VideoModal videoUrl={currentExercise.videoUrl} onClose={() => setShowVideo(false)} />}
     </div>
   );
 }
