@@ -1,28 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { collection, query, where, getDocs, orderBy, doc, getDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import WeeklyChart from '../../components/dashboard/WeeklyChart';
+import { useRole } from '../../hooks/useRole'; // ✅ Hook de Permissão
 
-// --- SUB-COMPONENTES (Para manter o código limpo) ---
+// --- SUB-COMPONENTES ---
 
 // 1. Card de Recomendação Inteligente
 const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart }) => {
-  // Lógica: Encontra o último feito e sugere o próximo, ou roda A se acabou a lista
   let nextTraining = null;
   
   if (trainings.length > 0) {
       if (lastWorkoutId) {
           const lastIndex = trainings.findIndex(t => t.firestoreId === lastWorkoutId);
-          // Se achou e não é o último, pega o próximo. Se é o último ou não achou, pega o primeiro.
           if (lastIndex !== -1 && lastIndex < trainings.length - 1) {
               nextTraining = trainings[lastIndex + 1];
           } else {
               nextTraining = trainings[0];
           }
       } else {
-          nextTraining = trainings[0]; // Usuário novo começa pelo primeiro
+          nextTraining = trainings[0];
       }
   }
 
@@ -30,7 +29,6 @@ const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart }) => {
 
   return (
     <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 shadow-lg shadow-blue-600/20 text-white relative overflow-hidden mb-8 group">
-        {/* Background Decorativo */}
         <div className="absolute top-0 right-0 opacity-10 text-9xl transform translate-x-10 -translate-y-4 pointer-events-none group-hover:scale-110 transition-transform duration-700">🔥</div>
         
         <div className="relative z-10">
@@ -66,30 +64,31 @@ const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart }) => {
   );
 };
 
-// 2. Card de Consistência (Psicológico)
+// 2. Card de Consistência
 const ConsistencyCard = ({ history }) => {
-    // Calcula treinos nos últimos 14 dias
     const now = new Date();
     const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
     const recentWorkouts = history.filter(h => new Date(h.date) >= twoWeeksAgo).length;
     
     let status = "Começando 🚀";
-    let color = "text-blue-500";
+    let color = "text-blue-500 bg-blue-50 dark:bg-blue-900/20";
     
-    if(recentWorkouts >= 8) { status = "Imparável 🔥"; color = "text-orange-500"; }
-    else if(recentWorkouts >= 4) { status = "Constante 💪"; color = "text-green-500"; }
+    if(recentWorkouts >= 8) { status = "Imparável 🔥"; color = "text-orange-500 bg-orange-50 dark:bg-orange-900/20"; }
+    else if(recentWorkouts >= 4) { status = "Constante 💪"; color = "text-green-500 bg-green-50 dark:bg-green-900/20"; }
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <div className="flex justify-between items-start mb-2">
-                <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Consistência (14 dias)</h3>
-                <span className={`text-[10px] font-bold ${color} bg-gray-50 dark:bg-gray-700 px-2 py-0.5 rounded`}>{status}</span>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-between">
+            <div className="flex justify-between items-start mb-2 gap-2">
+                <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider leading-tight">Frequência (14d)</h3>
+                <span className={`text-[9px] font-bold px-2 py-1 rounded whitespace-nowrap ${color}`}>{status}</span>
             </div>
-            <div className="flex items-end gap-1 mt-2">
-                <span className="text-4xl font-black text-gray-800 dark:text-white">{recentWorkouts}</span>
-                <span className="text-sm text-gray-400 font-bold mb-1">treinos</span>
+            <div>
+                <div className="flex items-end gap-1">
+                    <span className="text-4xl font-black text-gray-800 dark:text-white">{recentWorkouts}</span>
+                    <span className="text-sm text-gray-400 font-bold mb-1">treinos</span>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">Nos últimos 14 dias.</p>
             </div>
-            <p className="text-xs text-gray-400 mt-2">Mantenha o ritmo para evoluir.</p>
         </div>
     );
 };
@@ -99,16 +98,16 @@ const ConsistencyCard = ({ history }) => {
 export default function Home() {
   const { user } = useAuthContext();
   const navigate = useNavigate();
+  const { isCoach } = useRole(); // ✅ Lógica de Permissão
   
   const [history, setHistory] = useState([]);
-  const [trainings, setTrainings] = useState([]); // Lista de treinos disponíveis
+  const [trainings, setTrainings] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  // Stats
   const [stats, setStats] = useState({ 
     totalTreinos: 0, 
-    totalVolume: 0,
+    maxGlobalLoad: 0, 
     streak: 0,
     level: 'Iniciante',
     nextLevelTreinos: 10,
@@ -124,7 +123,7 @@ export default function Home() {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) setUserProfile(userDoc.data());
 
-        // 2. Histórico Completo
+        // 2. Histórico
         const qHistory = query(
           collection(db, 'checkIns'), 
           where('userId', '==', user.uid),
@@ -135,8 +134,7 @@ export default function Home() {
         setHistory(historyData);
         calculateGamification(historyData);
 
-        // 3. Treinos Disponíveis (Para recomendação)
-        // Ordenamos por nome para ter uma sequência lógica (A, B, C...)
+        // 3. Treinos
         const qTrainings = query(collection(db, 'trainings'), orderBy('name', 'asc')); 
         const trainingSnap = await getDocs(qTrainings);
         const trainingList = trainingSnap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
@@ -154,12 +152,25 @@ export default function Home() {
 
   const calculateGamification = (data) => {
     const totalTreinos = data.length;
-    const volumeAcumulado = data.reduce((acc, curr) => acc + (Number(curr.totalVolume) || 0), 0);
+    
+    // Calcula PR Global
+    let maxGlobalLoad = 0;
+    data.forEach(treino => {
+        if (treino.exercises) {
+            treino.exercises.forEach(ex => {
+                if (ex.sets) {
+                    ex.sets.forEach(s => {
+                        const weight = Number(s.weight) || 0;
+                        if (weight > maxGlobalLoad) maxGlobalLoad = weight;
+                    });
+                }
+            });
+        }
+    });
 
-    // Sistema de Níveis RPG
+    // Níveis
     let level = 'Iniciante 🌱';
     let nextLevel = 10;
-    
     if (totalTreinos >= 100) { level = 'Lenda 👑'; nextLevel = 1000; }
     else if (totalTreinos >= 50) { level = 'Monstro 🦍'; nextLevel = 100; }
     else if (totalTreinos >= 25) { level = 'Atleta 🏃'; nextLevel = 50; }
@@ -172,7 +183,7 @@ export default function Home() {
     
     const progress = Math.min(100, Math.max(0, ((totalTreinos - base) / (nextLevel - base)) * 100));
 
-    // Cálculo de Streak
+    // Streak
     const uniqueDates = [...new Set(data.map(d => new Date(d.date).toISOString().split('T')[0]))].sort().reverse();
     let streak = 0;
     if (uniqueDates.length > 0) {
@@ -183,22 +194,14 @@ export default function Home() {
             for (let i = 0; i < uniqueDates.length - 1; i++) {
                 const curr = new Date(uniqueDates[i]);
                 const prev = new Date(uniqueDates[i+1]);
-                const diffTime = Math.abs(curr - prev);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                if (diffDays === 1) streak++;
+                const diff = Math.ceil(Math.abs(curr - prev) / (1000 * 60 * 60 * 24)); 
+                if (diff === 1) streak++;
                 else break;
             }
         }
     }
 
-    setStats({
-      totalTreinos,
-      totalVolume: volumeAcumulado,
-      level,
-      nextLevelTreinos: nextLevel,
-      progress,
-      streak
-    });
+    setStats({ totalTreinos, maxGlobalLoad, level, nextLevelTreinos: nextLevel, progress, streak });
   };
 
   const formatVolume = (kg) => {
@@ -210,8 +213,6 @@ export default function Home() {
 
   const firstName = (userProfile?.displayName || user?.displayName || 'Atleta').split(' ')[0];
   const photoURL = userProfile?.photoURL || user?.photoURL;
-  
-  // Pega o ID do último treino feito para lógica de recomendação
   const lastWorkoutId = history.length > 0 ? history[0].trainingId : null;
 
   return (
@@ -238,51 +239,74 @@ export default function Home() {
                 </div>
             </div>
             
-            {/* Streak Badge */}
             <div className="text-center bg-white dark:bg-gray-800 px-3 py-2 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
                 <div className="text-xl">🔥</div>
                 <div className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase">{stats.streak} dias</div>
             </div>
         </div>
 
-        {/* 2. PRODUTO: Recomendação Inteligente */}
+        {/* --- 2. ÁREA DO TREINADOR (Botão que faltava!) --- */}
+        {isCoach && (
+            <div className="bg-gradient-to-r from-gray-800 to-gray-900 rounded-3xl p-6 text-white shadow-xl flex justify-between items-center relative overflow-hidden group border border-gray-700">
+                <div className="absolute right-0 top-0 h-full w-1/2 bg-white/5 skew-x-12 transform translate-x-10"></div>
+                <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-yellow-500 text-black text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">Modo Coach</span>
+                    </div>
+                    <h3 className="text-lg font-bold">Painel do Treinador</h3>
+                    <p className="text-gray-400 text-xs max-w-xs">Gerencie os treinos e biblioteca.</p>
+                </div>
+                <button 
+                    onClick={() => navigate('/admin/trainings')}
+                    className="relative z-10 bg-white text-gray-900 px-5 py-3 rounded-xl font-bold shadow-lg hover:bg-gray-100 active:scale-95 transition-all flex items-center gap-2 text-sm"
+                >
+                    <span>🛠️</span> Acessar
+                </button>
+            </div>
+        )}
+
+        {/* 3. Recomendação Inteligente */}
         <RecommendedWorkoutCard 
             lastWorkoutId={lastWorkoutId} 
             trainings={trainings} 
             onStart={(id) => navigate(`/training/${id}`)}
         />
 
-        {/* 3. Grid de KPIs Psicológicos */}
+        {/* 4. Grid de KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            
             {/* Próxima Meta */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden group hover:border-blue-200 transition-colors">
-                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Próxima Meta 🎯</h3>
-                <div className="flex justify-between items-end mb-2">
-                    <span className="text-3xl font-black text-gray-800 dark:text-white">{stats.nextLevelTreinos}</span>
-                    <span className="text-xs font-bold text-gray-400 mb-1">treinos</span>
-                </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${stats.progress}%` }}></div>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden group hover:border-blue-200 transition-colors flex flex-col justify-between">
+                <div>
+                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                    <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Próxima Meta 🎯</h3>
+                    <div className="flex justify-between items-end mb-2">
+                        <span className="text-3xl font-black text-gray-800 dark:text-white">{stats.nextLevelTreinos}</span>
+                        <span className="text-xs font-bold text-gray-400 mb-1">treinos</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${stats.progress}%` }}></div>
+                    </div>
                 </div>
                 <p className="text-[10px] text-gray-400 mt-2 text-right">Faltam {stats.nextLevelTreinos - stats.totalTreinos}</p>
             </div>
 
             <ConsistencyCard history={history} />
 
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Volume Total</h3>
-                <div className="flex items-end gap-1 mt-2">
-                    <span className="text-3xl font-black text-gray-800 dark:text-white">{formatVolume(stats.totalVolume)}</span>
+            {/* MAIOR CARGA */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-between">
+                <div>
+                    <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Maior Carga (PR)</h3>
+                    <div className="flex items-end gap-1">
+                        <span className="text-3xl font-black text-gray-800 dark:text-white">{stats.maxGlobalLoad}</span>
+                        <span className="text-sm font-bold text-gray-400 mb-1">kg</span>
+                    </div>
                 </div>
-                <p className="text-[10px] text-purple-500 mt-2 font-bold bg-purple-50 dark:bg-purple-900/20 px-2 py-0.5 rounded inline-block">Levantados até hoje</p>
+                <p className="text-[10px] text-purple-600 bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded inline-block w-fit mt-2 font-bold">
+                    Seu recorde pessoal 🏆
+                </p>
             </div>
 
-            <div 
-                onClick={() => navigate('/measurements')}
-                className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-300 transition-colors group"
-            >
+            <div onClick={() => navigate('/measurements')} className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-300 transition-colors group flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                     <div>
                         <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Peso Corporal</h3>
@@ -294,37 +318,28 @@ export default function Home() {
             </div>
         </div>
 
-        {/* 4. Gráfico e Última Conquista */}
+        {/* 5. Gráfico e Última Conquista */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
+                {/* Header do Gráfico Ajustado */}
                 <div className="mb-4 flex items-center justify-between px-1">
                     <h3 className="font-bold text-gray-700 dark:text-white text-lg">Frequência Semanal</h3>
-                    <span className="text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">Mantenha o foco!</span>
+                    <span className="text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">Mantenha o foco! 🚀</span>
                 </div>
                 <WeeklyChart history={history} />
             </div>
 
-            {/* Resumo Rico da Última Atividade */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
                 <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-6">Última Conquista</h3>
-                
                 {history.length > 0 ? (
                     <div className="flex-1 flex flex-col">
                         <div className="flex items-center gap-4 mb-6">
-                            <div className="w-14 h-14 bg-yellow-100 dark:bg-yellow-900/30 rounded-2xl flex items-center justify-center text-3xl shadow-sm">
-                                🏆
-                            </div>
+                            <div className="w-14 h-14 bg-yellow-100 dark:bg-yellow-900/30 rounded-2xl flex items-center justify-center text-3xl shadow-sm">🏆</div>
                             <div>
-                                <h4 className="font-bold text-lg text-gray-800 dark:text-white leading-tight line-clamp-1">
-                                    {history[0].trainingName}
-                                </h4>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 capitalize">
-                                    {new Date(history[0].date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                                </p>
+                                <h4 className="font-bold text-lg text-gray-800 dark:text-white leading-tight line-clamp-1">{history[0].trainingName}</h4>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 capitalize">{new Date(history[0].date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
                             </div>
                         </div>
-
-                        {/* Mini Stats Detalhados */}
                         <div className="grid grid-cols-2 gap-3 mb-6">
                             <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl border border-gray-100 dark:border-gray-600">
                                 <p className="text-[9px] text-gray-400 uppercase font-bold">Tempo</p>
@@ -335,13 +350,7 @@ export default function Home() {
                                 <p className="font-mono font-bold text-gray-800 dark:text-white text-lg">{formatVolume(history[0].totalVolume)}</p>
                             </div>
                         </div>
-                        
-                        <button 
-                            onClick={() => navigate('/history')}
-                            className="w-full mt-auto py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-xs uppercase tracking-wide"
-                        >
-                            Ver Histórico Completo
-                        </button>
+                        <button onClick={() => navigate('/history')} className="w-full mt-auto py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-xs uppercase tracking-wide">Ver Histórico Completo</button>
                     </div>
                 ) : (
                     <div className="flex-1 flex flex-col justify-center items-center text-center py-8 text-gray-400">
