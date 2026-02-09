@@ -191,7 +191,9 @@ export default function HistoryPage() {
                 return (
                   <div 
                     key={item.firestoreId} 
-                    className="bg-white dark:bg-gray-800 rounded-2xl p-0 shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden group relative transition-all hover:shadow-md"
+                    // ✅ AÇÃO PRINCIPAL: Ir para Detalhes
+                    onClick={() => navigate(`/history/${item.firestoreId}`)}
+                    className="bg-white dark:bg-gray-800 rounded-2xl p-0 shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden group relative transition-all hover:shadow-md cursor-pointer"
                   >
                     {/* Header do Card */}
                     <div className="p-5 flex gap-5 border-b border-gray-50 dark:border-gray-700/50">
@@ -229,9 +231,12 @@ export default function HistoryPage() {
                             </div>
                         </div>
                         
-                         {/* Botão Delete (Discreto) */}
+                         {/* Botão Delete (Com stopPropagation) */}
                          <button 
-                            onClick={() => handleDeleteRequest(item.firestoreId)}
+                            onClick={(e) => {
+                                e.stopPropagation(); // 🛑 Evita abrir detalhes ao deletar
+                                handleDeleteRequest(item.firestoreId);
+                            }}
                             className="absolute top-4 right-4 text-gray-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
                             title="Apagar registro"
                         >
@@ -250,7 +255,10 @@ export default function HistoryPage() {
                                     return (
                                         <div 
                                             key={i} 
-                                            onClick={() => navigate(`/analytics/${encodeURIComponent(ex.name)}`)}
+                                            onClick={(e) => {
+                                                e.stopPropagation(); // 🛑 Evita abrir detalhes do treino ao clicar no analytics do exercício
+                                                navigate(`/analytics/${encodeURIComponent(ex.name)}`);
+                                            }}
                                             className="flex justify-between items-center py-2 px-3 bg-white dark:bg-gray-700/40 rounded-lg hover:bg-blue-50 dark:hover:bg-gray-700 cursor-pointer group transition-colors border border-transparent hover:border-blue-200 dark:hover:border-gray-600"
                                         >
                                             <div className="flex items-center gap-2 overflow-hidden">

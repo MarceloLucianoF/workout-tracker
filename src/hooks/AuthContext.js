@@ -11,7 +11,6 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 
 const AuthContext = createContext();
 
-// --- FUNÇÃO ÚTIL DE TRADUÇÃO (Vinda do arquivo antigo) ---
 const translateError = (code) => {
     switch (code) {
         case 'auth/email-already-in-use': return 'Este email já está em uso.';
@@ -26,19 +25,18 @@ const translateError = (code) => {
 };
 
 export function AuthProvider({ children }) {
-    const [user, setUser] = useState(null); // Usuário do Auth (Login básico)
-    const [userProfile, setUserProfile] = useState(null); // Dados do Firestore (Peso, Role, etc)
+    const [user, setUser] = useState(null);
+    const [userProfile, setUserProfile] = useState(null);
     const [authLoading, setAuthLoading] = useState(true);
 
-    // --- 1. REGISTRO ---
-    const register = async (email, password, displayName) => {
+    // --- 1. REGISTRO (Atualizado para aceitar dados extras) ---
+    const register = async (email, password, displayName, additionalData = {}) => {
         try {
             const res = await createUserWithEmailAndPassword(auth, email, password);
             if (!res.user) throw new Error("Não foi possível criar o usuário.");
 
             await updateProfile(res.user, { displayName });
 
-            // Inicializa com campos nulos para facilitar edição depois (Lógica do arquivo antigo)
             const initialData = {
                 uid: res.user.uid,
                 displayName,
@@ -48,17 +46,17 @@ export function AuthProvider({ children }) {
                 age: null,
                 weight: null,
                 height: null,
-                photoURL: null
+                photoURL: null,
+                ...additionalData // ✅ Aqui entra o coachId se vier do registro
             };
 
             await setDoc(doc(db, "users", res.user.uid), initialData);
 
             setUser({ ...res.user, displayName }); 
-            setUserProfile(initialData); // Já seta o perfil localmente
+            setUserProfile(initialData); 
             return res.user;
         } catch (error) {
             console.error("Erro no register:", error);
-            // Lança o erro traduzido para a tela exibir
             throw new Error(translateError(error.code));
         }
     };
@@ -67,7 +65,6 @@ export function AuthProvider({ children }) {
     const login = async (email, password) => {
         try {
             await signInWithEmailAndPassword(auth, email, password);
-            // O useEffect lá embaixo vai carregar o userProfile automaticamente
         } catch (error) {
             throw new Error(translateError(error.code));
         }
@@ -84,13 +81,11 @@ export function AuthProvider({ children }) {
         }
     };
 
-    // --- 4. MONITORAR STATUS + CARREGAR PERFIL (A Mágica) ---
+    // --- 4. MONITORAR STATUS ---
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 setUser(firebaseUser);
-                
-                // Busca dados extras do Firestore (Role, Peso, Altura...)
                 try {
                     const docSnap = await getDoc(doc(db, "users", firebaseUser.uid));
                     if (docSnap.exists()) {
@@ -110,13 +105,13 @@ export function AuthProvider({ children }) {
     }, []);
 
     const value = {
-        user,           // Dados básicos (email, uid, photo)
-        userProfile,    // Dados completos (role, peso, altura) do banco
-        authLoading,
+        user,
+        userProfile,
+        authLoading, // ou 'loading' se preferir manter compatibilidade
         register,
         login,
         logout,
-        translateError // Exporta a função pra usar nas telas se quiser
+        translateError
     };
 
     return (

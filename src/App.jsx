@@ -7,6 +7,7 @@ import { Toaster } from 'react-hot-toast';
 // --- PÁGINAS: AUTH ---
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import ForgotPassword from './pages/auth/ForgotPassword';
 
 // --- PÁGINAS: USER (ALUNO) ---
 import Home from './pages/user/Home';
@@ -17,10 +18,17 @@ import HistoryPage from './pages/user/HistoryPage';
 import Profile from './pages/user/Profile';
 import MeasurementsPage from './pages/user/MeasurementsPage'; // ✅ NOVO
 import ExerciseAnalytics from './pages/user/ExerciseAnalytics'; // ✅ NOVO
+import UserChatPage from './pages/user/UserChatPage'; // ✅ Novo
+import WorkoutDetailsPage from './pages/user/WorkoutDetailsPage'; // ✅ Novo
 
 // --- PÁGINAS: ADMIN (TREINADOR) ---
 import AdminPanel from './pages/admin/AdminPanel';
 import AdminTrainingsPage from './pages/admin/AdminTrainingsPage'; // ✅ NOVO
+
+// --- PÁGINAS: COACH ---
+import CoachHome from './pages/coach/CoachHome';
+import CoachChatPage from './pages/coach/CoachChatPage';
+import CoachStudentsPage from './pages/coach/CoachStudentsPage'; // ✅ Novo
 
 // --- COMPONENTES ---
 import Navbar from './components/layout/Navbar';
@@ -66,8 +74,11 @@ function AppRoutes() {
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/home" />} />
           
           <Route path="/" element={<Navigate to={user ? "/home" : "/login"} replace />} />
+          <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/home" />} />
           
           {/* --- ROTAS PROTEGIDAS (ALUNO) --- */}
+          <Route path="/history/:checkInId" element={<ProtectedRoute><WorkoutDetailsPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute><UserChatPage /></ProtectedRoute>} />
           
           {/* Dashboard & Perfil */}
           <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
@@ -82,11 +93,19 @@ function AppRoutes() {
           {/* Histórico & Analytics */}
           <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
           <Route path="/analytics/:exerciseName" element={<ProtectedRoute><ExerciseAnalytics /></ProtectedRoute>} /> {/* 🔥 Performance */}
+
+          {/* Chat com Coach */}
+          <Route path="/chat" element={<ProtectedRoute><UserChatPage /></ProtectedRoute>} />
           
           {/* --- ROTAS PROTEGIDAS (ADMIN) --- */}
           {/* Mantendo compatibilidade com seu AdminPanel antigo e adicionando o novo Gestor */}
           <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
           <Route path="/admin/trainings" element={<ProtectedRoute><AdminTrainingsPage /></ProtectedRoute>} /> {/* 🔥 Builder de Treino */}
+
+          {/* --- ROTAS DO COACH (PAINEL DE GESTÃO) --- */}
+          <Route path="/coach/dashboard" element={<ProtectedRoute><CoachHome /></ProtectedRoute>} />
+          <Route path="/coach/chat" element={<ProtectedRoute><CoachChatPage /></ProtectedRoute>} />
+          <Route path="/coach/students" element={<ProtectedRoute><CoachStudentsPage /></ProtectedRoute>} />
 
           {/* Rota 404/Fallback */}
           <Route path="*" element={<Navigate to="/home" replace />} />
