@@ -10,7 +10,8 @@ export default function Profile() {
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(true);
-  const [originalData, setOriginalData] = useState({}); // Para comparar alterações
+  const [originalData, setOriginalData] = useState({}); 
+  const [coachData, setCoachData] = useState(null); // ✅ Dados do Coach
   const [formData, setFormData] = useState({
     displayName: '',
     goal: 'Hipertrofia',
@@ -20,10 +21,9 @@ export default function Profile() {
     photoURL: ''
   });
 
-  // Estado de alteração não salva
   const [isDirty, setIsDirty] = useState(false);
 
-  // Carrega dados
+  // Carrega dados do Usuário E do Coach
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user) return;
@@ -43,6 +43,15 @@ export default function Profile() {
           };
           setFormData(initialData);
           setOriginalData(initialData);
+
+          // ✅ Busca dados do Coach se existir vínculo
+          if (data.coachId) {
+              const coachRef = doc(db, 'users', data.coachId);
+              const coachSnap = await getDoc(coachRef);
+              if (coachSnap.exists()) {
+                  setCoachData({ uid: coachSnap.id, ...coachSnap.data() });
+              }
+          }
         }
       } catch (error) {
         console.error("Erro perfil:", error);
@@ -54,13 +63,13 @@ export default function Profile() {
     fetchProfile();
   }, [user]);
 
-  // Verifica se houve mudanças
+  // Verifica mudanças
   useEffect(() => {
       const changed = JSON.stringify(formData) !== JSON.stringify(originalData);
       setIsDirty(changed);
   }, [formData, originalData]);
 
-  // Handlers de Input
+  // Handlers
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -114,7 +123,7 @@ export default function Profile() {
       };
 
       await updateDoc(doc(db, 'users', user.uid), cleanData);
-      setOriginalData(formData); // Reseta estado dirty
+      setOriginalData(formData);
       toast.success('Perfil atualizado com sucesso!', { id: saveToast });
     } catch (error) {
       console.error(error);
@@ -130,9 +139,9 @@ export default function Profile() {
     }
   };
 
-  // Lógica de IMC em Tempo Real
+  // IMC
   const calculateIMC = () => {
-      const h = parseFloat(formData.height) / 100; // cm para m
+      const h = parseFloat(formData.height) / 100; 
       const w = parseFloat(formData.weight);
       if (h > 0 && w > 0) {
           const imc = w / (h * h);
@@ -167,7 +176,7 @@ export default function Profile() {
 
         <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden relative">
             
-            {/* Aviso de Alterações não Salvas */}
+            {/* Aviso Alteração */}
             {isDirty && (
                 <div className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-center text-xs font-bold py-2 absolute top-0 w-full z-10 animate-fade-in">
                     ⚠️ Você tem alterações não salvas
@@ -178,7 +187,7 @@ export default function Profile() {
             <div className="h-32 bg-gradient-to-r from-blue-600 to-purple-600 relative">
                 <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
                     <div className="w-24 h-24 rounded-full bg-white dark:bg-gray-800 p-1 shadow-xl relative group">
-                        <div className="w-full h-full rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-4xl overflow-hidden">
+                        <div className="w-full h-full rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-4xl overflow-hidden font-bold text-gray-400">
                             {formData.photoURL ? (
                                 <img src={formData.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                             ) : (
@@ -225,6 +234,31 @@ export default function Profile() {
                             </select>
                         </div>
                     </div>
+
+                    {/* --- NOVO: CARD DO TREINADOR --- */}
+                    {coachData && (
+                        <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 rounded-2xl p-4 flex items-center justify-between">
+                            <div>
+                                <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-1">Seu Treinador</p>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-blue-200 dark:bg-blue-800 flex items-center justify-center text-blue-700 dark:text-blue-200 font-bold text-sm">
+                                        {coachData.displayName?.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-gray-800 dark:text-white text-sm">{coachData.displayName}</p>
+                                        <p className="text-xs text-gray-500">Acompanhando sua evolução</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <button 
+                                type="button"
+                                onClick={() => navigate('/chat')}
+                                className="bg-white dark:bg-gray-800 text-blue-600 px-3 py-2 rounded-xl shadow-sm font-bold text-xs hover:bg-blue-50 transition-colors border border-blue-100 dark:border-gray-700"
+                            >
+                                💬 Chat
+                            </button>
+                        </div>
+                    )}
 
                     <div className="border-t border-gray-100 dark:border-gray-700 my-6"></div>
 
@@ -315,7 +349,8 @@ export default function Profile() {
         {/* Rodapé Informativo */}
         <div className="text-center mt-8 text-gray-400 text-xs">
             <p>AcademyUp v2.0</p>
-            <p className="mt-1">ID: {user.uid.slice(0, 8)}...</p>
+            <p className="mt-1 font-mono opacity-50">UID: {user.uid.slice(0, 8)}...</p>
+            <p className="mt-1">{user.email}</p>
         </div>
 
       </div>

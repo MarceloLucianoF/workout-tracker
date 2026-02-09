@@ -23,12 +23,15 @@ import WorkoutDetailsPage from './pages/user/WorkoutDetailsPage'; // ✅ Novo
 
 // --- PÁGINAS: ADMIN (TREINADOR) ---
 import AdminPanel from './pages/admin/AdminPanel';
-import AdminTrainingsPage from './pages/admin/AdminTrainingsPage'; // ✅ NOVO
+import ExerciseLibrary from './pages/admin/ExerciseLibrary'; // ✅ Importar
+import WorkoutEditor from './pages/admin/WorkoutEditor';
+import CoachTrainingsPage from './pages/admin/CoachTrainingsPage'; // ✅ Novo nome
 
 // --- PÁGINAS: COACH ---
 import CoachHome from './pages/coach/CoachHome';
 import CoachChatPage from './pages/coach/CoachChatPage';
 import CoachStudentsPage from './pages/coach/CoachStudentsPage'; // ✅ Novo
+import FinancialPage from './pages/coach/FinancialPage'; // ✅ Importar
 
 // --- COMPONENTES ---
 import Navbar from './components/layout/Navbar';
@@ -100,12 +103,16 @@ function AppRoutes() {
           {/* --- ROTAS PROTEGIDAS (ADMIN) --- */}
           {/* Mantendo compatibilidade com seu AdminPanel antigo e adicionando o novo Gestor */}
           <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
-          <Route path="/admin/trainings" element={<ProtectedRoute><AdminTrainingsPage /></ProtectedRoute>} /> {/* 🔥 Builder de Treino */}
+          <Route path="/admin/exercises" element={<ProtectedRoute><ExerciseLibrary /></ProtectedRoute>} />
+          <Route path="/admin/trainings" element={<ProtectedRoute><CoachTrainingsPage /></ProtectedRoute>} />
+          <Route path="/admin/trainings/:trainingId" element={<ProtectedRoute><WorkoutEditor /></ProtectedRoute>} />
 
           {/* --- ROTAS DO COACH (PAINEL DE GESTÃO) --- */}
           <Route path="/coach/dashboard" element={<ProtectedRoute><CoachHome /></ProtectedRoute>} />
           <Route path="/coach/chat" element={<ProtectedRoute><CoachChatPage /></ProtectedRoute>} />
           <Route path="/coach/students" element={<ProtectedRoute><CoachStudentsPage /></ProtectedRoute>} />
+          <Route path="/coach/financial" element={<ProtectedRoute><FinancialPage /></ProtectedRoute>} />
+          
 
           {/* Rota 404/Fallback */}
           <Route path="*" element={<Navigate to="/home" replace />} />

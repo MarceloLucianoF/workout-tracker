@@ -6,19 +6,21 @@ import { useNavigate } from 'react-router-dom';
 import WeeklyChart from '../../components/dashboard/WeeklyChart';
 import { useRole } from '../../hooks/useRole';
 import toast from 'react-hot-toast';
+import StudentChatWidget from '../../components/chat/StudentChatWidget'; // ✅ Importação do Widget
 
-// --- NOVO: MODAL PARA VINCULAR TREINADOR ---
+// --- MODAL PARA VINCULAR TREINADOR ---
 const LinkCoachModal = ({ isOpen, onClose, currentUserId, onSuccess }) => {
     const [code, setCode] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleLink = async () => {
-        if (!code.trim()) return toast.error("Digite o código do treinador.");
+        const cleanCode = code.trim();
+        if (!cleanCode) return toast.error("Digite o código do treinador.");
         
         setLoading(true);
         try {
             // 1. Verifica se o coach existe
-            const coachRef = doc(db, 'users', code.trim());
+            const coachRef = doc(db, 'users', cleanCode);
             const coachSnap = await getDoc(coachRef);
 
             if (!coachSnap.exists()) {
@@ -32,7 +34,7 @@ const LinkCoachModal = ({ isOpen, onClose, currentUserId, onSuccess }) => {
 
             // 2. Atualiza o perfil do aluno
             await updateDoc(doc(db, 'users', currentUserId), {
-                coachId: code.trim()
+                coachId: cleanCode
             });
 
             toast.success(`Vinculado a ${coachData.displayName}!`);
@@ -58,8 +60,8 @@ const LinkCoachModal = ({ isOpen, onClose, currentUserId, onSuccess }) => {
                 <input 
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    placeholder="Ex: H7s8d9..."
-                    className="w-full bg-gray-100 dark:bg-gray-700 p-3 rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono text-center tracking-widest"
+                    placeholder="Cole o código aqui..."
+                    className="w-full bg-gray-100 dark:bg-gray-700 p-3 rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono text-center tracking-widest text-sm"
                 />
 
                 <div className="flex gap-2">
@@ -77,8 +79,7 @@ const LinkCoachModal = ({ isOpen, onClose, currentUserId, onSuccess }) => {
     );
 };
 
-// --- SUB-COMPONENTES EXISTENTES ---
-
+// --- CARD DE TREINO RECOMENDADO ---
 const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart, assignedTrainingId }) => {
   let nextTraining = null;
   let isAssigned = false;
@@ -155,6 +156,7 @@ const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart, assignedTra
   );
 };
 
+// --- CARD DE CONSISTÊNCIA ---
 const ConsistencyCard = ({ history }) => {
     const now = new Date();
     const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
@@ -192,8 +194,8 @@ export default function Home() {
   const [trainings, setTrainings] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showLinkCoach, setShowLinkCoach] = useState(false); // Modal state
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // Para forçar reload após vincular
+  const [showLinkCoach, setShowLinkCoach] = useState(false); 
+  const [refreshTrigger, setRefreshTrigger] = useState(0); 
   
   const [stats, setStats] = useState({ 
     totalTreinos: 0, 
@@ -209,7 +211,7 @@ export default function Home() {
       try {
         if (!user) return;
 
-        // 1. Perfil (Busca coachId e currentTrainingId atualizados)
+        // 1. Perfil
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) {
             setUserProfile(userDoc.data());
@@ -236,7 +238,7 @@ export default function Home() {
     };
 
     fetchHomeData();
-  }, [user, refreshTrigger]); // Recarrega quando refreshTrigger muda
+  }, [user, refreshTrigger]); 
 
   const calculateGamification = (data) => {
     const totalTreinos = data.length;
@@ -310,15 +312,8 @@ export default function Home() {
                     <div className="flex items-center gap-2 mt-1">
                         <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-blue-200 dark:border-blue-800">{stats.level}</span>
                         
-                        {/* BOTÕES DE AÇÃO: CHAT OU VINCULAR */}
-                        {userProfile?.coachId ? (
-                            <button 
-                                onClick={() => navigate('/chat')} 
-                                className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 hover:bg-green-200 transition-colors border border-green-200 dark:border-green-800"
-                            >
-                                <span className="text-xs">💬</span> Falar com Coach
-                            </button>
-                        ) : (
+                        {/* BOTÃO VINCULAR (Só aparece se não tiver coach) */}
+                        {!userProfile?.coachId && (
                             <button 
                                 onClick={() => setShowLinkCoach(true)} 
                                 className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors border border-gray-300 dark:border-gray-600"
@@ -410,7 +405,7 @@ export default function Home() {
             </div>
         </div>
 
-        {/* GRAFICO */}
+        {/* GRAFICO E HISTÓRICO */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
                 <div className="mb-4 flex items-center justify-between px-1">
@@ -458,8 +453,12 @@ export default function Home() {
             isOpen={showLinkCoach} 
             onClose={() => setShowLinkCoach(false)} 
             currentUserId={user.uid}
-            onSuccess={() => setRefreshTrigger(prev => prev + 1)} // Recarrega tela
+            onSuccess={() => setRefreshTrigger(prev => prev + 1)} 
         />
+
+        {/* ✅ WIDGET DE CHAT (Aparece sozinho se tiver coach) */}
+        <StudentChatWidget />
+
       </div>
     </div>
   );
