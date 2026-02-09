@@ -5,12 +5,12 @@ import { useAuthContext } from '../../hooks/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
-export default function StudentsPage() {
+export default function CoachStudentsPage() {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   
   const [students, setStudents] = useState([]);
-  const [trainings, setTrainings] = useState([]); // Para o modal
+  const [trainings, setTrainings] = useState([]); // Para o modal de seleção
   const [loading, setLoading] = useState(true);
   
   // Controle do Modal de Atribuição
@@ -21,12 +21,12 @@ export default function StudentsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // A. Buscar Alunos
+        // A. Buscar Alunos vinculados a este Coach
         const qStudents = query(collection(db, 'users'), where('coachId', '==', user.uid));
         const studentsSnap = await getDocs(qStudents);
         const studentsList = studentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // B. Buscar Fichas (Para preencher o modal de seleção)
+        // B. Buscar Fichas criadas pelo Coach (Para preencher o modal)
         const qTrainings = query(
             collection(db, 'trainings'), 
             where('coachId', '==', user.uid),
@@ -47,39 +47,39 @@ export default function StudentsPage() {
     fetchData();
   }, [user]);
 
-  // 2. Helper para mostrar o nome do treino atual
+  // 2. Helper para mostrar o nome do treino atual no card do aluno
   const getTrainingName = (trainingId) => {
       if (!trainingId) return null;
-      // Verifica id do doc ou firestoreId salvo dentro do objeto
+      // Procura pelo ID do documento ou pelo campo firestoreId se existir
       const t = trainings.find(tr => tr.id === trainingId || tr.firestoreId === trainingId);
-      return t ? t.name : 'Treino Removido';
+      return t ? t.name : 'Treino não encontrado (Apagado?)';
   };
 
-  // 3. Ação: Atribuir Treino
+  // 3. Ação: Atribuir Treino ao Aluno
   const handleAssignTraining = async (trainingId) => {
       if (!selectedStudent) return;
       
       const loadingToast = toast.loading("Enviando ficha...");
       try {
-          // Atualiza o perfil do aluno com o ID do treino
+          // Atualiza o perfil do aluno com o ID do treino escolhido
           await updateDoc(doc(db, 'users', selectedStudent.id), {
               currentTrainingId: trainingId
           });
 
-          // Atualiza lista localmente (UX rápida)
+          // Atualiza lista localmente para refletir a mudança instantaneamente
           setStudents(prev => prev.map(s => 
               s.id === selectedStudent.id ? { ...s, currentTrainingId: trainingId } : s
           ));
 
-          toast.success("Ficha atualizada!", { id: loadingToast });
+          toast.success("Ficha atualizada com sucesso!", { id: loadingToast });
           setShowModal(false);
       } catch (error) {
           console.error(error);
-          toast.error("Erro ao atribuir.", { id: loadingToast });
+          toast.error("Erro ao atribuir ficha.", { id: loadingToast });
       }
   };
 
-  // 4. Ação: Chat Rápido
+  // 4. Ação: Abrir Chat direto com o aluno
   const handleChat = (student) => {
       navigate('/coach/chat', { 
           state: { 
@@ -98,7 +98,7 @@ export default function StudentsPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 md:p-8 pb-32">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header */}
+        {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-fade-in-down">
             <div>
                 <button onClick={() => navigate('/coach/dashboard')} className="text-gray-500 hover:text-blue-500 text-sm font-bold mb-2">← Voltar</button>
@@ -106,16 +106,16 @@ export default function StudentsPage() {
                 <p className="text-gray-500 text-sm">Gerencie o acesso e as fichas de treino.</p>
             </div>
             
-            {/* Botão de convite rápido */}
+            {/* Botão de Atalho para Convidar */}
             <button 
                 onClick={() => navigate('/coach/dashboard')} 
-                className="bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-4 py-2 rounded-xl font-bold shadow-sm text-sm hover:bg-gray-50 transition-colors"
+                className="bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-4 py-2 rounded-xl font-bold shadow-sm text-sm hover:bg-gray-50 transition-colors flex items-center gap-2"
             >
-                📢 Pegar Código de Convite
+                <span>📢</span> Pegar Código
             </button>
         </div>
 
-        {/* Lista de Alunos */}
+        {/* LISTA DE ALUNOS */}
         {students.length === 0 ? (
             <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700">
                 <span className="text-4xl block mb-2 opacity-50">🦗</span>
@@ -130,24 +130,27 @@ export default function StudentsPage() {
                     return (
                         <div key={student.id} className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center justify-between gap-6 group hover:border-blue-200 transition-colors">
                             
-                            {/* Info do Aluno */}
-                            <div className="flex items-center gap-4 w-full md:w-auto">
+                            {/* 1. Identificação do Aluno */}
+                            <div 
+                                className="flex items-center gap-4 w-full md:w-auto cursor-pointer"
+                                onClick={() => navigate(`/coach/students/${student.id}`)} // Vai para detalhes (Próxima etapa)
+                            >
                                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0 shadow-md overflow-hidden">
                                     {student.photoURL ? <img src={student.photoURL} className="w-full h-full object-cover" alt=""/> : student.displayName?.[0]}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-gray-800 dark:text-white text-lg">{student.displayName}</h3>
+                                    <h3 className="font-bold text-gray-800 dark:text-white text-lg hover:text-blue-600 transition-colors">{student.displayName}</h3>
                                     <div className="flex items-center gap-2 text-sm text-gray-500">
                                         <span>{student.email}</span>
-                                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                                        <span className="w-2 h-2 rounded-full bg-green-500" title="Ativo"></span>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Status do Treino (O "Coração" da página) */}
+                            {/* 2. Status do Treino (Card Central) */}
                             <div className="flex-1 w-full md:px-8">
                                 <div className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-xl border border-gray-100 dark:border-gray-700/50 flex items-center justify-between">
-                                    <div className="min-w-0">
+                                    <div className="min-w-0 pr-2">
                                         <p className="text-[10px] font-bold text-gray-400 uppercase mb-0.5">Ficha Atual</p>
                                         {currentTrainingName ? (
                                             <p className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2 text-sm truncate">
@@ -161,26 +164,26 @@ export default function StudentsPage() {
                                     </div>
                                     <button 
                                         onClick={() => { setSelectedStudent(student); setShowModal(true); }}
-                                        className="text-xs font-bold text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 px-3 py-1.5 rounded-lg transition-colors ml-2"
+                                        className="text-xs font-bold text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
                                     >
                                         Trocar
                                     </button>
                                 </div>
                             </div>
 
-                            {/* Ações */}
+                            {/* 3. Botões de Ação */}
                             <div className="flex gap-2 w-full md:w-auto">
                                 <button 
                                     onClick={() => handleChat(student)}
-                                    className="flex-1 md:flex-none px-5 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+                                    className="flex-1 md:flex-none px-5 py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 hover:bg-blue-100 transition-colors rounded-xl font-bold text-sm flex items-center justify-center gap-2"
                                     title="Abrir Chat"
                                 >
-                                    💬 
+                                    💬 Chat
                                 </button>
                                 <button 
                                     onClick={() => navigate(`/coach/financial`)} 
                                     className="flex-1 md:flex-none px-5 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-500 hover:border-green-400 hover:text-green-500 transition-colors rounded-xl font-bold text-sm flex items-center justify-center gap-2"
-                                    title="Financeiro do Aluno"
+                                    title="Financeiro"
                                 >
                                     💲
                                 </button>
@@ -220,7 +223,9 @@ export default function StudentsPage() {
                             </div>
                         ) : (
                             trainings.map(t => {
+                                // Verifica se é o treino atual (compatibilidade com ID string ou objeto)
                                 const isCurrent = selectedStudent.currentTrainingId === t.id || selectedStudent.currentTrainingId === t.firestoreId;
+                                
                                 return (
                                     <button 
                                         key={t.id}
@@ -229,7 +234,7 @@ export default function StudentsPage() {
                                         className={`w-full text-left p-4 rounded-xl border transition-all flex justify-between items-center group ${
                                             isCurrent
                                             ? 'bg-green-50 border-green-500 ring-1 ring-green-500 dark:bg-green-900/20 opacity-80 cursor-default' 
-                                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:border-blue-500 hover:shadow-md'
+                                            : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:border-blue-500 hover:shadow-md'
                                         }`}
                                     >
                                         <div>
@@ -237,7 +242,7 @@ export default function StudentsPage() {
                                                 {t.name}
                                             </h4>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-500 dark:text-gray-300 uppercase font-bold">
+                                                <span className="text-[10px] bg-gray-100 dark:bg-gray-600 px-2 py-0.5 rounded text-gray-500 dark:text-gray-300 uppercase font-bold">
                                                     {t.difficulty}
                                                 </span>
                                                 <span className="text-xs text-gray-400">

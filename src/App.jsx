@@ -20,6 +20,7 @@ import MeasurementsPage from './pages/user/MeasurementsPage'; // ✅ NOVO
 import ExerciseAnalytics from './pages/user/ExerciseAnalytics'; // ✅ NOVO
 import UserChatPage from './pages/user/UserChatPage'; // ✅ Novo
 import WorkoutDetailsPage from './pages/user/WorkoutDetailsPage'; // ✅ Novo
+import TrainingRunner from './pages/user/TrainingRunner'; // ✅ Importar
 
 // --- PÁGINAS: ADMIN (TREINADOR) ---
 import AdminPanel from './pages/admin/AdminPanel';
@@ -32,9 +33,12 @@ import CoachHome from './pages/coach/CoachHome';
 import CoachChatPage from './pages/coach/CoachChatPage';
 import CoachStudentsPage from './pages/coach/CoachStudentsPage'; // ✅ Novo
 import FinancialPage from './pages/coach/FinancialPage'; // ✅ Importar
+import StudentDetailsPage from './pages/coach/StudentDetailsPage'; // ✅ Importar
+import CoachSettings from './pages/coach/CoachSettings'; // ✅ Importar
 
 // --- COMPONENTES ---
 import Navbar from './components/layout/Navbar';
+import LandingPage from './pages/public/LandingPage';   // ✅ Importar
 
 // --- COMPONENTE DE ROTA PROTEGIDA ---
 const ProtectedRoute = ({ children }) => {
@@ -77,11 +81,14 @@ function AppRoutes() {
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/home" />} />
           
           <Route path="/" element={<Navigate to={user ? "/home" : "/login"} replace />} />
+          <Route path="/" element={!user ? <LandingPage /> : <Navigate to={user.role === 'coach' ? '/coach/dashboard' : '/home'} />} />
           <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/home" />} />
+          
           
           {/* --- ROTAS PROTEGIDAS (ALUNO) --- */}
           <Route path="/history/:checkInId" element={<ProtectedRoute><WorkoutDetailsPage /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute><UserChatPage /></ProtectedRoute>} />
+          <Route path="/training/:trainingId" element={<ProtectedRoute><TrainingRunner /></ProtectedRoute>} />
           
           {/* Dashboard & Perfil */}
           <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
@@ -112,7 +119,8 @@ function AppRoutes() {
           <Route path="/coach/chat" element={<ProtectedRoute><CoachChatPage /></ProtectedRoute>} />
           <Route path="/coach/students" element={<ProtectedRoute><CoachStudentsPage /></ProtectedRoute>} />
           <Route path="/coach/financial" element={<ProtectedRoute><FinancialPage /></ProtectedRoute>} />
-          
+          <Route path="/coach/students/:studentId" element={<ProtectedRoute><StudentDetailsPage /></ProtectedRoute>} />
+          <Route path="/coach/settings" element={<ProtectedRoute><CoachSettings /></ProtectedRoute>} />
 
           {/* Rota 404/Fallback */}
           <Route path="*" element={<Navigate to="/home" replace />} />

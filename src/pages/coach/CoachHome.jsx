@@ -245,7 +245,7 @@ export default function CoachHome() {
                     </div>
                 </div>
 
-                {/* Ações Rápidas (LINKS REAIS) */}
+                {/* Ações Rápidas (LINKS ATIVADOS) */}
                 <div className="bg-blue-600 rounded-3xl p-5 text-white shadow-lg shadow-blue-600/20">
                     <h3 className="font-bold text-sm mb-4 opacity-90">Atalhos Operacionais</h3>
                     <div className="grid grid-cols-2 gap-3">
@@ -261,9 +261,9 @@ export default function CoachHome() {
                             <span className="text-lg block mb-1">💵</span>
                             <span className="text-[10px] font-bold uppercase">Financeiro</span>
                         </button>
-                        <button onClick={() => navigate('/admin/trainings')} className="bg-white/10 hover:bg-white/20 p-3 rounded-xl text-left transition-colors">
-                            <span className="text-lg block mb-1">📝</span>
-                            <span className="text-[10px] font-bold uppercase">Criar Ficha</span>
+                        <button onClick={() => navigate('/coach/settings')} className="bg-white/10 hover:bg-white/20 p-3 rounded-xl text-left transition-colors">
+                            <span className="text-lg block mb-1">⚙️</span>
+                            <span className="text-[10px] font-bold uppercase">Configurar</span>
                         </button>
                     </div>
                 </div>
