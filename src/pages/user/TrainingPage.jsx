@@ -4,6 +4,7 @@ import { doc, getDoc, collection, getDocs, query, where, orderBy, limit } from '
 import { db } from '../../firebase/config';
 import { useAuthContext } from '../../hooks/AuthContext';
 import toast from 'react-hot-toast';
+import GifPlayer from '../../components/common/GifPlayer';
 
 export default function TrainingPage() {
   const { trainingId } = useParams();
@@ -61,7 +62,6 @@ export default function TrainingPage() {
         setSelectedExercises(initialSelection);
 
         // D. Busca Histórico (Para "Última Carga" e "Volume Estimado")
-        // Buscamos os últimos 10 treinos do usuário para mapear cargas
         const q = query(
             collection(db, 'checkIns'), 
             where('userId', '==', user.uid),
@@ -117,15 +117,10 @@ export default function TrainingPage() {
     }
   }, [exerciseList]);
 
-  // 3. LÓGICA DE DRAG & DROP (Só arrasta pelo Handle)
+  // 3. LÓGICA DE DRAG & DROP
   const dragStart = (e, position) => {
-    // Só permite arrastar se clicar no ícone de "handle" (classe .drag-handle)
-    // Mas como o HTML5 Drag é no elemento pai, validamos visualmente ou permitimos tudo
-    // Para simplificar sem libs: O usuário arrasta o CARD, mas a UX sugere o handle.
     dragItem.current = position;
-    // Efeito visual de "levantar"
     e.dataTransfer.effectAllowed = "move";
-    // Oculta "fantasma" padrão se quiser (opcional)
   };
 
   const dragEnter = (e, position) => {
@@ -142,7 +137,6 @@ export default function TrainingPage() {
     dragOverItem.current = null;
     setExerciseList(copyListItems);
     
-    // Reseta seleção para evitar descompasso de índices
     const newSelection = {};
     copyListItems.forEach((_, i) => newSelection[i] = true);
     setSelectedExercises(newSelection);
@@ -167,7 +161,6 @@ export default function TrainingPage() {
     }
   };
 
-  // Cálculo de Volume Estimado
   const calculateEstimatedVolume = () => {
       let total = 0;
       exerciseList.forEach((ex, i) => {
@@ -185,7 +178,7 @@ export default function TrainingPage() {
   if (!training) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-36">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-40"> {/* pb-40 para garantir scroll final */}
         
         {/* HEADER & INFO */}
         <div className="bg-white dark:bg-gray-800 p-6 pt-8 pb-6 shadow-sm border-b border-gray-100 dark:border-gray-700">
@@ -265,7 +258,6 @@ export default function TrainingPage() {
                                     className="w-full h-full object-cover"
                                     loading="lazy" 
                                 />
-                                {/* Número do exercício */}
                                 <div className="absolute bottom-0 right-0 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-tl-md backdrop-blur-sm">
                                     #{index + 1}
                                 </div>
@@ -301,8 +293,9 @@ export default function TrainingPage() {
             </div>
         </div>
 
-        {/* FOOTER FLUTUANTE */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-t border-gray-200 dark:border-gray-800 z-40 pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        {/* FOOTER FLUTUANTE (Z-Index Elevado) */}
+        {/* Alterado para z-[60] e pb-8 para garantir visibilidade acima da navbar */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-t border-gray-200 dark:border-gray-800 z-[60] pb-8 md:pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
             <button 
                 onClick={handleStartTraining}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg py-4 rounded-2xl shadow-xl shadow-blue-600/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2 group"

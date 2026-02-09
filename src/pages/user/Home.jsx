@@ -5,45 +5,60 @@ import { db } from '../../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import WeeklyChart from '../../components/dashboard/WeeklyChart';
 
-// --- SUB-COMPONENTS (For cleaner code) ---
+// --- SUB-COMPONENTES (Para manter o código limpo) ---
 
+// 1. Card de Recomendação Inteligente
 const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart }) => {
-  // Simple Logic: Find the next letter or rotate back to A
-  // This could be smarter in V3 (based on muscle recovery)
+  // Lógica: Encontra o último feito e sugere o próximo, ou roda A se acabou a lista
+  let nextTraining = null;
   
-  let nextTraining = trainings[0]; // Default
-  
-  if (lastWorkoutId && trainings.length > 0) {
-      const lastIndex = trainings.findIndex(t => t.firestoreId === lastWorkoutId);
-      if (lastIndex !== -1 && lastIndex < trainings.length - 1) {
-          nextTraining = trainings[lastIndex + 1];
+  if (trainings.length > 0) {
+      if (lastWorkoutId) {
+          const lastIndex = trainings.findIndex(t => t.firestoreId === lastWorkoutId);
+          // Se achou e não é o último, pega o próximo. Se é o último ou não achou, pega o primeiro.
+          if (lastIndex !== -1 && lastIndex < trainings.length - 1) {
+              nextTraining = trainings[lastIndex + 1];
+          } else {
+              nextTraining = trainings[0];
+          }
       } else {
-          nextTraining = trainings[0]; // Loop back to A
+          nextTraining = trainings[0]; // Usuário novo começa pelo primeiro
       }
   }
 
   if (!nextTraining) return null;
 
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 shadow-lg shadow-blue-600/20 text-white relative overflow-hidden mb-8">
-        <div className="absolute top-0 right-0 opacity-10 text-9xl transform translate-x-10 -translate-y-4 pointer-events-none">🔥</div>
+    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 shadow-lg shadow-blue-600/20 text-white relative overflow-hidden mb-8 group">
+        {/* Background Decorativo */}
+        <div className="absolute top-0 right-0 opacity-10 text-9xl transform translate-x-10 -translate-y-4 pointer-events-none group-hover:scale-110 transition-transform duration-700">🔥</div>
         
         <div className="relative z-10">
-            <span className="bg-white/20 backdrop-blur-md text-xs font-bold px-2 py-1 rounded uppercase tracking-wider mb-3 inline-block">
-                Recomendado Hoje
-            </span>
-            <h2 className="text-2xl font-black mb-1">{nextTraining.name}</h2>
-            <p className="text-blue-100 text-sm mb-6 max-w-md line-clamp-1">{nextTraining.description || "Foco total no progresso."}</p>
+            <div className="flex items-center gap-2 mb-3">
+                <span className="bg-white/20 backdrop-blur-md text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">
+                    Recomendado Hoje
+                </span>
+                <span className="text-[10px] font-bold opacity-80 uppercase tracking-wider">
+                    • {nextTraining.difficulty}
+                </span>
+            </div>
             
-            <div className="flex items-center gap-4">
+            <h2 className="text-2xl md:text-3xl font-black mb-1">{nextTraining.name}</h2>
+            <p className="text-blue-100 text-sm mb-6 max-w-md line-clamp-1 opacity-90">
+                {nextTraining.description || "Foco total no progresso e consistência."}
+            </p>
+            
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <button 
                     onClick={() => onStart(nextTraining.firestoreId)}
-                    className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex items-center gap-2"
+                    className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 hover:bg-blue-50"
                 >
                     <span>▶</span> Iniciar Agora
                 </button>
-                <div className="text-xs font-bold text-blue-100 hidden sm:block">
-                    ⏱ ~45 min • 📋 {nextTraining.exercises?.length || 0} Exercícios
+                <div className="text-xs font-bold text-blue-100 flex items-center gap-3">
+                    <span className="flex items-center gap-1">⏱ ~45 min</span>
+                    <span className="w-1 h-1 bg-blue-400 rounded-full"></span>
+                    <span className="flex items-center gap-1">📋 {nextTraining.exercises?.length || 0} Exercícios</span>
                 </div>
             </div>
         </div>
@@ -51,24 +66,26 @@ const RecommendedWorkoutCard = ({ lastWorkoutId, trainings, onStart }) => {
   );
 };
 
+// 2. Card de Consistência (Psicológico)
 const ConsistencyCard = ({ history }) => {
-    // Calculate workouts in last 14 days
+    // Calcula treinos nos últimos 14 dias
     const now = new Date();
     const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
     const recentWorkouts = history.filter(h => new Date(h.date) >= twoWeeksAgo).length;
     
     let status = "Começando 🚀";
     let color = "text-blue-500";
+    
     if(recentWorkouts >= 8) { status = "Imparável 🔥"; color = "text-orange-500"; }
     else if(recentWorkouts >= 4) { status = "Constante 💪"; color = "text-green-500"; }
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex justify-between items-start mb-2">
-                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider">Consistência (14 dias)</h3>
-                <span className={`text-xs font-bold ${color}`}>{status}</span>
+                <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Consistência (14 dias)</h3>
+                <span className={`text-[10px] font-bold ${color} bg-gray-50 dark:bg-gray-700 px-2 py-0.5 rounded`}>{status}</span>
             </div>
-            <div className="flex items-end gap-1">
+            <div className="flex items-end gap-1 mt-2">
                 <span className="text-4xl font-black text-gray-800 dark:text-white">{recentWorkouts}</span>
                 <span className="text-sm text-gray-400 font-bold mb-1">treinos</span>
             </div>
@@ -77,12 +94,14 @@ const ConsistencyCard = ({ history }) => {
     );
 };
 
+// --- COMPONENTE PRINCIPAL ---
+
 export default function Home() {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   
   const [history, setHistory] = useState([]);
-  const [trainings, setTrainings] = useState([]); // List of available trainings
+  const [trainings, setTrainings] = useState([]); // Lista de treinos disponíveis
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   
@@ -117,7 +136,8 @@ export default function Home() {
         calculateGamification(historyData);
 
         // 3. Treinos Disponíveis (Para recomendação)
-        const qTrainings = query(collection(db, 'trainings'), orderBy('name', 'asc')); // Simple order A-Z
+        // Ordenamos por nome para ter uma sequência lógica (A, B, C...)
+        const qTrainings = query(collection(db, 'trainings'), orderBy('name', 'asc')); 
         const trainingSnap = await getDocs(qTrainings);
         const trainingList = trainingSnap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
         setTrainings(trainingList);
@@ -136,7 +156,7 @@ export default function Home() {
     const totalTreinos = data.length;
     const volumeAcumulado = data.reduce((acc, curr) => acc + (Number(curr.totalVolume) || 0), 0);
 
-    // RPG Logic
+    // Sistema de Níveis RPG
     let level = 'Iniciante 🌱';
     let nextLevel = 10;
     
@@ -152,7 +172,7 @@ export default function Home() {
     
     const progress = Math.min(100, Math.max(0, ((totalTreinos - base) / (nextLevel - base)) * 100));
 
-    // Streak Logic
+    // Cálculo de Streak
     const uniqueDates = [...new Set(data.map(d => new Date(d.date).toISOString().split('T')[0]))].sort().reverse();
     let streak = 0;
     if (uniqueDates.length > 0) {
@@ -190,6 +210,8 @@ export default function Home() {
 
   const firstName = (userProfile?.displayName || user?.displayName || 'Atleta').split(' ')[0];
   const photoURL = userProfile?.photoURL || user?.photoURL;
+  
+  // Pega o ID do último treino feito para lógica de recomendação
   const lastWorkoutId = history.length > 0 ? history[0].trainingId : null;
 
   return (
@@ -199,7 +221,7 @@ export default function Home() {
         {/* 1. Header Minimalista */}
         <div className="flex justify-between items-center px-2">
             <div className="flex items-center gap-3">
-                <div onClick={() => navigate('/profile')} className="w-12 h-12 rounded-full overflow-hidden shadow-sm border-2 border-white dark:border-gray-700 cursor-pointer">
+                <div onClick={() => navigate('/profile')} className="w-12 h-12 rounded-full overflow-hidden shadow-sm border-2 border-white dark:border-gray-700 cursor-pointer hover:opacity-80 transition-opacity">
                     {photoURL ? (
                         <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
@@ -210,16 +232,16 @@ export default function Home() {
                 </div>
                 <div>
                     <h1 className="text-xl font-bold text-gray-800 dark:text-white">Olá, {firstName}!</h1>
-                    <div className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                        <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">{stats.level}</span>
+                    <div className="text-[10px] font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1 uppercase tracking-wider">
+                        <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">{stats.level}</span>
                     </div>
                 </div>
             </div>
             
             {/* Streak Badge */}
-            <div className="text-center">
-                <div className="text-2xl">🔥</div>
-                <div className="text-xs font-bold text-gray-600 dark:text-gray-300">{stats.streak} dias</div>
+            <div className="text-center bg-white dark:bg-gray-800 px-3 py-2 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                <div className="text-xl">🔥</div>
+                <div className="text-[10px] font-bold text-gray-600 dark:text-gray-300 uppercase">{stats.streak} dias</div>
             </div>
         </div>
 
@@ -232,98 +254,100 @@ export default function Home() {
 
         {/* 3. Grid de KPIs Psicológicos */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
             {/* Próxima Meta */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden group hover:border-blue-200 transition-colors">
                 <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Próxima Meta 🎯</h3>
+                <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Próxima Meta 🎯</h3>
                 <div className="flex justify-between items-end mb-2">
                     <span className="text-3xl font-black text-gray-800 dark:text-white">{stats.nextLevelTreinos}</span>
                     <span className="text-xs font-bold text-gray-400 mb-1">treinos</span>
                 </div>
-                <div className="w-full bg-gray-100 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
                     <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${stats.progress}%` }}></div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2 text-right">Faltam {stats.nextLevelTreinos - stats.totalTreinos}</p>
+                <p className="text-[10px] text-gray-400 mt-2 text-right">Faltam {stats.nextLevelTreinos - stats.totalTreinos}</p>
             </div>
 
             <ConsistencyCard history={history} />
 
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Volume Total</h3>
-                <div className="flex items-end gap-1">
+                <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Volume Total</h3>
+                <div className="flex items-end gap-1 mt-2">
                     <span className="text-3xl font-black text-gray-800 dark:text-white">{formatVolume(stats.totalVolume)}</span>
                 </div>
-                <p className="text-xs text-purple-500 mt-2 font-bold">Levantados até hoje</p>
+                <p className="text-[10px] text-purple-500 mt-2 font-bold bg-purple-50 dark:bg-purple-900/20 px-2 py-0.5 rounded inline-block">Levantados até hoje</p>
             </div>
 
             <div 
                 onClick={() => navigate('/measurements')}
-                className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-300 transition-colors"
+                className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-300 transition-colors group"
             >
                 <div className="flex justify-between items-start">
                     <div>
-                        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2">Peso Corporal</h3>
+                        <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-2">Peso Corporal</h3>
                         <span className="text-3xl font-black text-gray-800 dark:text-white">{userProfile?.weight || '--'}kg</span>
                     </div>
-                    <span className="text-2xl">⚖️</span>
+                    <span className="text-2xl group-hover:scale-110 transition-transform">⚖️</span>
                 </div>
-                <p className="text-xs text-blue-500 mt-2 font-bold">Atualizar medidas →</p>
+                <p className="text-[10px] text-blue-500 mt-2 font-bold opacity-0 group-hover:opacity-100 transition-opacity">Atualizar medidas →</p>
             </div>
         </div>
 
         {/* 4. Gráfico e Última Conquista */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-                <div className="mb-4 flex items-center justify-between">
-                    <h3 className="font-bold text-gray-700 dark:text-white">Frequência Semanal</h3>
-                    <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded">Mantenha o foco!</span>
+                <div className="mb-4 flex items-center justify-between px-1">
+                    <h3 className="font-bold text-gray-700 dark:text-white text-lg">Frequência Semanal</h3>
+                    <span className="text-[10px] font-bold text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">Mantenha o foco!</span>
                 </div>
                 <WeeklyChart history={history} />
             </div>
 
             {/* Resumo Rico da Última Atividade */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-6">Última Conquista</h3>
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-6">Última Conquista</h3>
                 
                 {history.length > 0 ? (
                     <div className="flex-1 flex flex-col">
                         <div className="flex items-center gap-4 mb-6">
-                            <div className="w-14 h-14 bg-yellow-100 dark:bg-yellow-900/30 rounded-2xl flex items-center justify-center text-3xl">
+                            <div className="w-14 h-14 bg-yellow-100 dark:bg-yellow-900/30 rounded-2xl flex items-center justify-center text-3xl shadow-sm">
                                 🏆
                             </div>
                             <div>
-                                <h4 className="font-bold text-lg text-gray-800 dark:text-white leading-tight">
+                                <h4 className="font-bold text-lg text-gray-800 dark:text-white leading-tight line-clamp-1">
                                     {history[0].trainingName}
                                 </h4>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 capitalize">
                                     {new Date(history[0].date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
                                 </p>
                             </div>
                         </div>
 
-                        {/* Mini Stats do último treino */}
+                        {/* Mini Stats Detalhados */}
                         <div className="grid grid-cols-2 gap-3 mb-6">
-                            <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl">
-                                <p className="text-[10px] text-gray-400 uppercase font-bold">Tempo</p>
-                                <p className="font-mono font-bold text-gray-800 dark:text-white">{Math.floor(history[0].duration / 60)} min</p>
+                            <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl border border-gray-100 dark:border-gray-600">
+                                <p className="text-[9px] text-gray-400 uppercase font-bold">Tempo</p>
+                                <p className="font-mono font-bold text-gray-800 dark:text-white text-lg">{Math.floor(history[0].duration / 60)}<span className="text-xs ml-0.5">min</span></p>
                             </div>
-                            <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl">
-                                <p className="text-[10px] text-gray-400 uppercase font-bold">Volume</p>
-                                <p className="font-mono font-bold text-gray-800 dark:text-white">{history[0].totalVolume}kg</p>
+                            <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-xl border border-gray-100 dark:border-gray-600">
+                                <p className="text-[9px] text-gray-400 uppercase font-bold">Volume</p>
+                                <p className="font-mono font-bold text-gray-800 dark:text-white text-lg">{formatVolume(history[0].totalVolume)}</p>
                             </div>
                         </div>
                         
                         <button 
                             onClick={() => navigate('/history')}
-                            className="w-full mt-auto py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+                            className="w-full mt-auto py-3 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-xs uppercase tracking-wide"
                         >
                             Ver Histórico Completo
                         </button>
                     </div>
                 ) : (
                     <div className="flex-1 flex flex-col justify-center items-center text-center py-8 text-gray-400">
-                        <p>Nenhum treino ainda.</p>
-                        <button onClick={() => navigate('/trainings')} className="text-blue-500 font-bold text-sm mt-2">Começar Jornada</button>
+                        <div className="text-4xl mb-3 opacity-50">💤</div>
+                        <p className="text-sm font-medium">Nenhum treino ainda.</p>
+                        <button onClick={() => navigate('/trainings')} className="text-blue-500 font-bold text-xs mt-2 hover:underline">Começar Jornada</button>
                     </div>
                 )}
             </div>
