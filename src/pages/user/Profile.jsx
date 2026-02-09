@@ -40,6 +40,7 @@ export default function Profile() {
         }
       } catch (error) {
         console.error("Erro perfil:", error);
+        toast.error("Erro ao carregar dados.");
       } finally {
         setLoading(false);
       }
@@ -47,21 +48,79 @@ export default function Profile() {
     fetchProfile();
   }, [user]);
 
+  // --- VALIDAÇÃO: TEXTO SIMPLES ---
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // --- VALIDAÇÃO: NUMEROS DECIMAIS (Peso e Altura) ---
+  // Troca virgula por ponto e impede letras
+  const handleDecimalChange = (e) => {
+    let value = e.target.value;
+
+    // 1. Troca vírgula por ponto
+    value = value.replace(',', '.');
+
+    // 2. Permite apenas números e UM ponto decimal
+    // Regex: Começa com numeros, pode ter um ponto, e mais numeros
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+        setFormData({ ...formData, [e.target.name]: value });
+    }
+  };
+
+  // --- VALIDAÇÃO: INTEIROS (Idade) ---
+  // Remove qualquer coisa que não seja número
+  const handleIntegerChange = (e) => {
+    const value = e.target.value;
+    // Regex: Substitui tudo que NÃO é digito (\D) por vazio
+    const cleanValue = value.replace(/\D/g, '');
+    
+    setFormData({ ...formData, [e.target.name]: cleanValue });
+  };
+
+  // --- UPLOAD DE IMAGEM (Base64 com limite) ---
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Trava de segurança: 500KB
+    if (file.size > 500 * 1024) {
+        toast.error("Imagem muito grande! Máximo 500KB.");
+        return;
+    }
+
+    const loadingToast = toast.loading("Processando foto...");
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+        const base64String = reader.result;
+        setFormData(prev => ({ ...prev, photoURL: base64String }));
+        toast.success("Foto carregada! Clique em Salvar.", { id: loadingToast });
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  // --- SALVAR ---
   const handleSave = async (e) => {
     e.preventDefault();
     const saveToast = toast.loading('Salvando perfil...');
     
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        ...formData,
-        updatedAt: new Date().toISOString()
-      });
-      toast.success('Perfil atualizado!', { id: saveToast });
+      // Sanitização final antes de enviar pro banco
+      const cleanData = {
+          ...formData,
+          // Converte para Number para garantir contas matemáticas futuras
+          weight: formData.weight ? parseFloat(formData.weight) : null,
+          height: formData.height ? parseFloat(formData.height) : null,
+          age: formData.age ? parseInt(formData.age) : null,
+          updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'users', user.uid), cleanData);
+      toast.success('Perfil atualizado com sucesso!', { id: saveToast });
     } catch (error) {
+      console.error(error);
       toast.error('Erro ao salvar.', { id: saveToast });
     }
   };
@@ -85,7 +144,7 @@ export default function Profile() {
                 ← Voltar
             </button>
             <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Meu Perfil</h1>
-            <div className="w-8"></div> {/* Espaço vazio para centralizar título visualmente */}
+            <div className="w-8"></div>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -93,7 +152,8 @@ export default function Profile() {
             {/* Capa / Avatar */}
             <div className="h-32 bg-gradient-to-r from-blue-600 to-purple-600 relative">
                 <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
-                    <div className="w-24 h-24 rounded-full bg-white dark:bg-gray-800 p-1 shadow-xl">
+                    <div className="w-24 h-24 rounded-full bg-white dark:bg-gray-800 p-1 shadow-xl relative group">
+                        {/* Imagem Atual */}
                         <div className="w-full h-full rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-4xl overflow-hidden">
                             {formData.photoURL ? (
                                 <img src={formData.photoURL} alt="Avatar" className="w-full h-full object-cover" />
@@ -101,6 +161,17 @@ export default function Profile() {
                                 <span>{formData.displayName?.charAt(0).toUpperCase() || '👤'}</span>
                             )}
                         </div>
+
+                        {/* Botão de Upload Invisível sobre a foto */}
+                        <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                            <span className="text-xs font-bold">Trocar 📷</span>
+                            <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleImageUpload} 
+                                className="hidden" 
+                            />
+                        </label>
                     </div>
                 </div>
             </div>
@@ -117,75 +188,73 @@ export default function Profile() {
                                 name="displayName"
                                 value={formData.displayName} 
                                 onChange={handleChange}
+                                placeholder="Como você quer ser chamado?"
                                 className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-bold"
                             />
                         </div>
 
-                        <div>
+                        <div className="col-span-1 md:col-span-2">
                             <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Meta Principal</label>
                             <select 
                                 name="goal"
                                 value={formData.goal} 
                                 onChange={handleChange}
-                                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white cursor-pointer"
                             >
-                                <option value="Hipertrofia">💪 Hipertrofia</option>
-                                <option value="Emagrecimento">🔥 Emagrecimento</option>
-                                <option value="Força">🏋️ Força Pura</option>
-                                <option value="Resistência">🏃 Resistência</option>
+                                <option value="Hipertrofia">💪 Hipertrofia (Ganhar Massa)</option>
+                                <option value="Emagrecimento">🔥 Emagrecimento (Queimar Gordura)</option>
+                                <option value="Força">🏋️ Força Pura (Powerlifting)</option>
+                                <option value="Resistência">🏃 Resistência (Cardio/Endurance)</option>
                             </select>
-                        </div>
-
-                        <div>
-                            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Link da Foto (Opcional)</label>
-                            <input 
-                                type="url" 
-                                name="photoURL"
-                                placeholder="https://..."
-                                value={formData.photoURL} 
-                                onChange={handleChange}
-                                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white text-sm"
-                            />
                         </div>
                     </div>
 
                     <div className="border-t border-gray-100 dark:border-gray-700 my-6"></div>
 
-                    {/* Medidas Corporais */}
+                    {/* Medidas Corporais (Com Validação) */}
                     <div>
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Medidas Atuais</h3>
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Medidas Físicas</h3>
                         <div className="grid grid-cols-3 gap-4">
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Peso (kg)</label>
                                 <input 
-                                    type="number" 
+                                    type="text" 
+                                    inputMode="decimal" // Abre teclado numérico no celular
                                     name="weight"
+                                    placeholder="00.0"
                                     value={formData.weight} 
-                                    onChange={handleChange}
-                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono"
+                                    onChange={handleDecimalChange}
+                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono text-center"
                                 />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Altura (cm)</label>
                                 <input 
-                                    type="number" 
+                                    type="text" 
+                                    inputMode="decimal"
                                     name="height"
+                                    placeholder="000"
                                     value={formData.height} 
-                                    onChange={handleChange}
-                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono"
+                                    onChange={handleDecimalChange} // Altura pode ter ponto se user quiser (1.75), mas ideal é cm
+                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono text-center"
                                 />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Idade</label>
                                 <input 
-                                    type="number" 
+                                    type="text" 
+                                    inputMode="numeric" // Apenas números
                                     name="age"
+                                    placeholder="00"
                                     value={formData.age} 
-                                    onChange={handleChange}
-                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono"
+                                    onChange={handleIntegerChange}
+                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono text-center"
                                 />
                             </div>
                         </div>
+                        <p className="text-[10px] text-gray-400 mt-2 text-center">
+                            Use ponto (.) para casas decimais. Ex: 75.5
+                        </p>
                     </div>
 
                     <div className="pt-4 flex flex-col gap-4">

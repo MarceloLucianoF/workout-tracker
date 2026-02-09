@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { collection, query, where, getDocs, orderBy, doc, getDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useNavigate } from 'react-router-dom';
 import WeeklyChart from '../../components/dashboard/WeeklyChart';
@@ -69,7 +69,7 @@ export default function Home() {
     else if (totalTreinos >= 25) { level = 'Atleta 🏃'; nextLevel = 50; }
     else if (totalTreinos >= 10) { level = 'Focado 🧠'; nextLevel = 25; }
 
-    // Calcula base do nível anterior para a barra de progresso não começar do zero absoluto
+    // Calcula base do nível anterior
     let base = 0;
     if (totalTreinos >= 10) base = 10;
     if (totalTreinos >= 25) base = 25;
@@ -85,7 +85,6 @@ export default function Home() {
         const today = new Date().toISOString().split('T')[0];
         const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
         
-        // Se o último treino foi hoje ou ontem, o streak está vivo
         if (uniqueDates[0] === today || uniqueDates[0] === yesterday) {
             streak = 1;
             for (let i = 0; i < uniqueDates.length - 1; i++) {
@@ -123,6 +122,12 @@ export default function Home() {
     );
   }
 
+  // --- PREPARAÇÃO DE DADOS VISUAIS ---
+  // Prioriza dados do perfil (Firestore), depois Auth, depois Fallback
+  const currentName = userProfile?.displayName || user?.displayName || 'Atleta';
+  const firstName = currentName.split(' ')[0];
+  const photoURL = userProfile?.photoURL || user?.photoURL;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8 transition-colors duration-300 pb-32">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -130,12 +135,28 @@ export default function Home() {
         {/* Header Principal */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-4 w-full md:w-auto">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl shadow-lg shadow-blue-500/20 text-white font-bold">
-                    {user.displayName?.charAt(0).toUpperCase() || 'A'}
+                
+                {/* LÓGICA DO AVATAR NA HOME */}
+                <div 
+                    onClick={() => navigate('/profile')}
+                    className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-blue-500/20 cursor-pointer hover:opacity-90 transition-opacity bg-gray-200 dark:bg-gray-700 shrink-0"
+                >
+                    {photoURL ? (
+                        <img 
+                            src={photoURL} 
+                            alt="Perfil" 
+                            className="w-full h-full object-cover" 
+                        />
+                    ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-3xl text-white font-bold">
+                            {firstName.charAt(0).toUpperCase()}
+                        </div>
+                    )}
                 </div>
+
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
-                        Olá, {user.displayName?.split(' ')[0]}! 👋
+                        Olá, {firstName}! 👋
                     </h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Vamos superar seus limites hoje?</p>
                 </div>
