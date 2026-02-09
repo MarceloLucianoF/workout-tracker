@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast'; // Importante: Instalar react-hot-toast se não tiver
 
 export default function Register() {
   const [displayName, setDisplayName] = useState('');
@@ -8,8 +9,10 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
-  const { register, error, loading, user } = useAuthContext();
+  // Destrutura register. Se der erro, verifique o passo 2 abaixo.
+  const { register, user, authLoading } = useAuthContext(); 
   const navigate = useNavigate();
+  const [localLoading, setLocalLoading] = useState(false);
 
   // Se já estiver logado, redireciona
   useEffect(() => {
@@ -20,35 +23,74 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validação de Senha (UX Melhorada)
     if (password !== confirmPassword) {
-      alert("Senhas não conferem!"); 
+      toast.error("As senhas não conferem!", {
+        icon: '🔒',
+        style: { borderRadius: '10px', background: '#333', color: '#fff' },
+      }); 
       return;
     }
+
+    if (password.length < 6) {
+      toast.error("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    setLocalLoading(true);
+    const loadingToast = toast.loading('Criando sua conta...');
+
     try {
+      // Chama a função do contexto
       await register(email, password, displayName);
+      
+      toast.success(`Bem-vindo, ${displayName}! 🚀`, { id: loadingToast });
       navigate('/home');
+      
     } catch (err) {
       console.error(err);
+      
+      // Tradução de erros comuns do Firebase
+      let errorMessage = "Erro ao criar conta.";
+      if (err.code === 'auth/email-already-in-use') errorMessage = "Este email já está cadastrado.";
+      if (err.code === 'auth/invalid-email') errorMessage = "Email inválido.";
+      if (err.code === 'auth/weak-password') errorMessage = "A senha é muito fraca.";
+
+      toast.error(errorMessage, { id: loadingToast });
+    } finally {
+      setLocalLoading(false);
     }
   };
+
+  if (authLoading) return null; // Evita flash de conteúdo
 
   return (
     <div className="min-h-screen flex bg-white dark:bg-gray-900 transition-colors">
       
-      {/* Lado Esquerdo */}
-      <div className="hidden lg:flex w-1/2 bg-gradient-to-br from-gray-900 to-black items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1470&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-overlay"></div>
-        <div className="relative z-10 p-12 text-white">
-          <h1 className="text-5xl font-black mb-6">Comece sua jornada hoje.</h1>
-          <ul className="space-y-4 text-lg text-gray-300">
-            <li className="flex items-center gap-3">✅ Acompanhe sua evolução</li>
-            <li className="flex items-center gap-3">✅ Gráficos de performance</li>
+      {/* Lado Esquerdo (Banner) */}
+      <div className="hidden lg:flex w-1/2 bg-gray-900 items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1517836357463-d25dfeac3438?q=80&w=1470&auto=format&fit=crop')] bg-cover bg-center opacity-40"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent"></div>
+        
+        <div className="relative z-10 p-12 text-white max-w-lg">
+          <h1 className="text-5xl font-black mb-6 leading-tight">Construa sua melhor versão.</h1>
+          <ul className="space-y-4 text-lg text-gray-200">
+            <li className="flex items-center gap-3">
+                <span className="bg-green-500/20 p-1 rounded-full text-green-400">✅</span> Acompanhe sua evolução
+            </li>
+            <li className="flex items-center gap-3">
+                <span className="bg-blue-500/20 p-1 rounded-full text-blue-400">✅</span> Gráficos de performance
+            </li>
+            <li className="flex items-center gap-3">
+                <span className="bg-purple-500/20 p-1 rounded-full text-purple-400">✅</span> Histórico detalhado
+            </li>
           </ul>
         </div>
       </div>
 
-      {/* Lado Direito */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+      {/* Lado Direito (Form) */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white dark:bg-gray-900">
         <div className="w-full max-w-md space-y-8 animate-fade-in-up">
           
           <div className="text-center lg:text-left">
@@ -65,7 +107,7 @@ export default function Register() {
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 placeholder="Ex: João Silva"
               />
             </div>
@@ -77,7 +119,7 @@ export default function Register() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 placeholder="seu@email.com"
               />
             </div>
@@ -90,7 +132,7 @@ export default function Register() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="••••••"
                 />
                 </div>
@@ -101,28 +143,27 @@ export default function Register() {
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="••••••"
                 />
                 </div>
             </div>
 
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm flex items-center gap-2">
-                ⚠️ {error}
-              </div>
-            )}
-
             <button
               type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg shadow-blue-600/20 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all transform active:scale-95"
+              disabled={localLoading}
+              className="w-full flex justify-center py-4 px-4 border border-transparent rounded-xl shadow-lg shadow-blue-600/20 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all transform active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {loading ? 'Criando...' : 'Cadastrar Gratuitamente'}
+              {localLoading ? (
+                  <span className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Criando...
+                  </span>
+              ) : 'Cadastrar Gratuitamente'}
             </button>
           </form>
 
-          <div className="text-center">
+          <div className="text-center pt-2">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Já tem conta?{' '}
               <Link to="/login" className="font-bold text-blue-600 hover:text-blue-500 transition-colors">

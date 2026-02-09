@@ -6,6 +6,7 @@ import { useAuthContext } from '../../hooks/AuthContext';
 import toast from 'react-hot-toast';
 import GifPlayer from '../../components/common/GifPlayer';
 import VideoModal from '../../components/common/VideoModal';
+import confetti from 'canvas-confetti'; // Se tiver instalado, senão remova
 
 // Componente visual do Timer de Descanso (Overlay)
 const RestTimerOverlay = ({ seconds, totalTime, onSkip, onAdd }) => {
@@ -78,15 +79,36 @@ export default function TrainingExecutionPage() {
         }
 
         const trainingData = trainingSnap.data();
+        
+        // Busca todos os exercícios para cruzar dados
         const exercisesSnap = await getDocs(collection(db, 'exercises'));
         const allExercises = exercisesSnap.docs.map(d => ({ firestoreId: d.id, ...d.data() }));
+        
+        // --- HIDRATAÇÃO SEGURA ---
+        // Aqui transformamos a lista de IDs ["id1", "id2"] nos objetos reais do exercício
         const hydratedExercises = (trainingData.exercises || [])
-          .map(exId => allExercises.find(e => e.id === exId))
-          .filter(Boolean);
+          .map(exId => {
+             const idStr = String(exId);
+             // Tenta achar por ID do Firestore OU ID antigo numérico (convertido pra string)
+             return allExercises.find(e => String(e.firestoreId) === idStr || String(e.id) === idStr);
+          })
+          .filter(item => item !== undefined); // REMOVE OS UNDEFINED (IDs que não existem mais)
 
-        const fullTraining = { firestoreId: trainingSnap.id, ...trainingData, exercises: hydratedExercises };
+        if (hydratedExercises.length === 0) {
+            toast.error("Este treino está vazio. Edite-o no painel Admin.");
+            navigate('/trainings');
+            return;
+        }
+
+        const fullTraining = { 
+            firestoreId: trainingSnap.id, 
+            ...trainingData, 
+            exercises: hydratedExercises // Substitui a lista de IDs pelos objetos reais
+        };
+        
         setTraining(fullTraining);
 
+        // Inicializa Logs
         const initialLog = {};
         hydratedExercises.forEach((ex, index) => {
           const sets = [];
@@ -97,11 +119,12 @@ export default function TrainingExecutionPage() {
         });
         setSetsLog(initialLog);
 
-        if (user && fullTraining.id) {
+        // Busca histórico de cargas
+        if (user && fullTraining.firestoreId) {
           const historyQ = query(
             collection(db, 'checkIns'),
             where('userId', '==', user.uid),
-            where('trainingId', '==', fullTraining.id),
+            where('trainingId', '==', fullTraining.firestoreId),
             orderBy('date', 'desc'),
             limit(1)
           );
@@ -181,7 +204,6 @@ export default function TrainingExecutionPage() {
     });
   };
 
-  // --- NOVA FUNÇÃO DE PULAR EXERCÍCIO ---
   const handleSkipExercise = () => {
     if (activeExerciseIndex < (training.exercises?.length || 0) - 1) {
         setActiveExerciseIndex(p => p + 1);
@@ -201,7 +223,6 @@ export default function TrainingExecutionPage() {
         sets.forEach(s => {
           if (s.completed) {
             totalSetsDone++;
-            // Garante que é número, se estiver vazio vira 0
             totalVolume += (Number(s.weight) || 0) * (Number(s.reps) || 0);
           }
         });
@@ -210,18 +231,23 @@ export default function TrainingExecutionPage() {
       const checkInData = {
         userId: user.uid,
         userEmail: user.email,
-        trainingId: training.id || 0,
+        trainingId: training.firestoreId || 'unknown',
         trainingName: training.name,
         date: new Date().toISOString(),
         duration: globalTimer,
         detailedLogs: setsLog,
         totalSetsDone,
         totalVolume,
-        totalExercises: training.exercises.length, // Importante para o histórico
+        totalExercises: training.exercises.length,
         timestamp: new Date()
       };
 
       await addDoc(collection(db, 'checkIns'), checkInData);
+      
+      try {
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      } catch(e) { console.log("Confetti not loaded"); }
+
       toast.success('Treino Monstro! 💪', { id: loadingToast });
       navigate('/history');
 
@@ -241,7 +267,10 @@ export default function TrainingExecutionPage() {
   if (loading) return <div className="flex justify-center items-center h-screen bg-gray-100 dark:bg-gray-900"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
   if (!training) return null;
 
+  // SEGURANÇA EXTRA: Verifica se currentExercise existe
   const currentExercise = training.exercises[activeExerciseIndex];
+  if (!currentExercise) return <div className="text-center p-10 text-white">Erro: Exercício não encontrado.</div>;
+
   const currentSets = setsLog[activeExerciseIndex] || [];
   const isExerciseComplete = currentSets.every(s => s.completed);
 
@@ -282,6 +311,12 @@ export default function TrainingExecutionPage() {
                     <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-lg text-xs font-bold border border-blue-100 dark:border-blue-800">🔄 {currentExercise.sets} Séries</span>
                     <span className="bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-lg text-xs font-bold border border-purple-100 dark:border-purple-800">⚡ {currentExercise.reps} Reps</span>
                 </div>
+                {/* Instruções */}
+                {currentExercise.execution && (
+                    <p className="mt-3 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/30 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                        💡 {currentExercise.execution}
+                    </p>
+                )}
              </div>
         </div>
 
@@ -320,7 +355,7 @@ export default function TrainingExecutionPage() {
                 ⬅️ Anterior
              </button>
 
-             {/* BOTÃO PULAR NOVO */}
+             {/* BOTÃO PULAR */}
              {activeExerciseIndex < training.exercises.length - 1 && (
                  <button
                     onClick={handleSkipExercise}

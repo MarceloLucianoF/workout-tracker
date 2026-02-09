@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import toast from 'react-hot-toast';
 import { useAdmin } from '../../hooks/useAdmin';
@@ -13,11 +13,11 @@ export default function AdminPanel() {
   const [trainings, setTrainings] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // --- ESTADOS DE EDIÇÃO ---
-  const [editingId, setEditingId] = useState(null); // ID do item sendo editado (null = criando novo)
+  // Estados de Edição
+  const [editingId, setEditingId] = useState(null);
 
   // Forms
-  const initialExForm = { name: '', muscleGroup: '', machineImage: '', videoUrl: '', sets: 3, reps: '12', rest: 60 };
+  const initialExForm = { name: '', muscleGroup: '', machineImage: '', videoUrl: '', sets: 3, reps: '12', rest: 60, execution: '' };
   const [exForm, setExForm] = useState(initialExForm);
   
   const initialTrainingForm = { name: '', description: '', difficulty: 'Iniciante' };
@@ -34,40 +34,141 @@ export default function AdminPanel() {
       const exSnap = await getDocs(collection(db, 'exercises'));
       const trSnap = await getDocs(collection(db, 'trainings'));
       
-      setExercises(exSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.name.localeCompare(b.name)));
-      setTrainings(trSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setExercises(exSnap.docs.map(d => ({ firestoreId: d.id, ...d.data() })).sort((a,b) => String(a.name).localeCompare(String(b.name))));
+      setTrainings(trSnap.docs.map(d => ({ firestoreId: d.id, ...d.data() })));
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao carregar dados.");
     } finally {
       setLoading(false);
     }
   };
 
+  // --- IMPORTAÇÃO INTELIGENTE COM AUTO-RELACIONAMENTO ---
+  const handleImportJson = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const loadingToast = toast.loading('Analisando dados...');
+      try {
+        const jsonData = JSON.parse(event.target.result);
+        const targetCollection = activeTab === 'exercises' ? 'exercises' : 'trainings';
+        
+        let itemsToImport = [];
+        if (Array.isArray(jsonData)) {
+            itemsToImport = jsonData;
+        } else {
+            itemsToImport = jsonData[targetCollection] || jsonData.exercises || jsonData.trainings || [jsonData];
+        }
+
+        if (!itemsToImport || itemsToImport.length === 0) throw new Error("JSON vazio.");
+
+        // --- PREPARAÇÃO PARA VINCULAR TREINOS ---
+        // Se estivermos importando treinos, precisamos buscar os exercícios existentes
+        // para converter IDs numéricos (101) em IDs do Firestore (dgzAR...)
+        let exerciseMap = {}; 
+        if (targetCollection === 'trainings') {
+            toast.loading('Vinculando exercícios...', { id: loadingToast });
+            const currentExercisesSnap = await getDocs(collection(db, 'exercises'));
+            currentExercisesSnap.forEach(doc => {
+                const data = doc.data();
+                // Cria um mapa: "101" -> "dgzARp3P..."
+                if (data.originalId) exerciseMap[String(data.originalId)] = doc.id;
+                // Fallback: tenta mapear pelo ID antigo se salvo como string
+                if (data.id) exerciseMap[String(data.id)] = doc.id;
+            });
+        }
+
+        const batch = writeBatch(db);
+        let count = 0;
+
+        for (const item of itemsToImport) {
+             const docRef = doc(collection(db, targetCollection));
+             const docData = {
+                 ...item,
+                 createdAt: new Date().toISOString(),
+                 originalId: item.id ? String(item.id) : null // Salva ID antigo para referência
+             };
+             
+             // Limpeza do ID principal para não conflitar com Firestore
+             delete docData.id; 
+
+             // LÓGICA DE EXERCÍCIOS
+             if (targetCollection === 'exercises') {
+                 if (docData.muscleGroup) docData.muscleGroup = docData.muscleGroup.toLowerCase();
+             }
+
+             // LÓGICA DE TREINOS (O PULO DO GATO 🐱)
+             if (targetCollection === 'trainings' && Array.isArray(item.exercises)) {
+                 // Substitui [101, 102] por ["dgz...", "u3u..."]
+                 const resolvedExercises = item.exercises.map(oldId => {
+                     const realId = exerciseMap[String(oldId)];
+                     if (!realId) console.warn(`Aviso: Exercício ID ${oldId} não encontrado no banco.`);
+                     return realId || oldId; // Se achar, usa o novo. Se não, mantém o velho (mas vai dar aviso).
+                 }).filter(Boolean); // Remove nulos
+                 
+                 docData.exercises = resolvedExercises;
+             }
+
+             batch.set(docRef, docData);
+             count++;
+        }
+
+        await batch.commit();
+        toast.success(`${count} itens importados e vinculados!`, { id: loadingToast });
+        fetchData(); 
+      } catch (err) {
+        console.error(err);
+        toast.error('Erro no JSON.', { id: loadingToast });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = null; 
+  };
+
   // --- LÓGICA DE EXERCÍCIOS ---
-  
   const handleSaveExercise = async (e) => {
     e.preventDefault();
+    const loadingToast = toast.loading('Salvando...');
+
     try {
+      const cleanData = {
+        name: String(exForm.name || '').trim(),
+        muscleGroup: String(exForm.muscleGroup || 'geral').toLowerCase(),
+        machineImage: String(exForm.machineImage || ''),
+        videoUrl: String(exForm.videoUrl || ''),
+        execution: String(exForm.execution || ''),
+        sets: Number(exForm.sets) || 0,
+        reps: String(exForm.reps || ''),
+        rest: Number(exForm.rest) || 0,
+        updatedAt: new Date().toISOString()
+      };
+
       if (editingId) {
-        // MODO EDIÇÃO
-        await updateDoc(doc(db, 'exercises', editingId), exForm);
-        toast.success('Exercício atualizado!');
+        await updateDoc(doc(db, 'exercises', editingId), cleanData);
+        toast.success('Atualizado!', { id: loadingToast });
       } else {
-        // MODO CRIAÇÃO
-        await addDoc(collection(db, 'exercises'), exForm);
-        toast.success('Exercício criado!');
+        cleanData.createdAt = new Date().toISOString();
+        await addDoc(collection(db, 'exercises'), cleanData);
+        toast.success('Criado!', { id: loadingToast });
       }
       resetExerciseForm();
       fetchData();
     } catch (error) {
-      toast.error('Erro ao salvar exercício.');
+      console.error(error);
+      toast.error(`Erro: ${error.message}`, { id: loadingToast });
     }
   };
 
   const handleEditExercise = (ex) => {
-    setExForm(ex);
-    setEditingId(ex.id);
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Rola pra cima pro formulário
+    setExForm({
+        ...ex,
+        muscleGroup: ex.muscleGroup ? ex.muscleGroup.toLowerCase() : ''
+    });
+    setEditingId(ex.firestoreId);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const resetExerciseForm = () => {
@@ -76,7 +177,7 @@ export default function AdminPanel() {
   };
 
   const handleDeleteExercise = async (id) => {
-    if(!window.confirm("Apagar este exercício?")) return;
+    if(!window.confirm("Apagar exercício?")) return;
     try {
         await deleteDoc(doc(db, 'exercises', id));
         toast.success("Apagado.");
@@ -85,32 +186,34 @@ export default function AdminPanel() {
   };
 
   // --- LÓGICA DE TREINOS ---
-
   const handleSaveTraining = async (e) => {
     e.preventDefault();
     if (selectedExercises.length === 0) return toast.error("Selecione exercícios!");
+    
+    const loadingToast = toast.loading('Salvando...');
 
     try {
       const payload = {
-        ...trainingForm,
+        name: String(trainingForm.name || '').trim(),
+        description: String(trainingForm.description || ''),
+        difficulty: String(trainingForm.difficulty || 'Iniciante'),
         exercises: selectedExercises,
-        updatedAt: new Date()
+        updatedAt: new Date().toISOString()
       };
 
       if (editingId) {
-        // UPDATE
         await updateDoc(doc(db, 'trainings', editingId), payload);
-        toast.success('Treino atualizado!');
+        toast.success('Atualizado!', { id: loadingToast });
       } else {
-        // CREATE
-        payload.createdAt = new Date();
+        payload.createdAt = new Date().toISOString();
         await addDoc(collection(db, 'trainings'), payload);
-        toast.success('Treino criado!');
+        toast.success('Criado!', { id: loadingToast });
       }
       resetTrainingForm();
       fetchData();
     } catch (error) {
-      toast.error('Erro ao salvar treino.');
+      console.error(error);
+      toast.error(`Erro: ${error.message}`, { id: loadingToast });
     }
   };
 
@@ -120,8 +223,9 @@ export default function AdminPanel() {
         description: tr.description,
         difficulty: tr.difficulty
     });
+    // O tr.exercises agora já deve vir com IDs reais do Firestore graças à importação inteligente
     setSelectedExercises(tr.exercises || []);
-    setEditingId(tr.id);
+    setEditingId(tr.firestoreId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -132,10 +236,10 @@ export default function AdminPanel() {
   };
 
   const handleDeleteTraining = async (id) => {
-      if(!window.confirm("Apagar este treino?")) return;
+      if(!window.confirm("Apagar treino?")) return;
       try {
           await deleteDoc(doc(db, 'trainings', id));
-          toast.success("Treino removido.");
+          toast.success("Removido.");
           fetchData();
       } catch (e) { toast.error("Erro ao apagar"); }
   };
@@ -151,11 +255,31 @@ export default function AdminPanel() {
   if (authLoading) return null;
   if (!isAdmin) return <Navigate to="/home" />;
 
+  const importLabel = activeTab === 'exercises' ? 'Importar JSON de Exercícios' : 'Importar JSON de Treinos';
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 pb-24 transition-colors">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Painel do Treinador 🧢</h1>
-        <p className="text-gray-500 mb-8">Gerencie o conteúdo do aplicativo.</p>
+        
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Painel do Treinador 🧢</h1>
+                <p className="text-gray-500">Gerencie o conteúdo do aplicativo.</p>
+            </div>
+
+            <div className="relative overflow-hidden group">
+                <button className="bg-gray-800 dark:bg-white text-white dark:text-gray-900 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-gray-700 transition-colors shadow-lg">
+                    📂 {importLabel}
+                </button>
+                <input 
+                    type="file" 
+                    accept=".json"
+                    onChange={handleImportJson}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    title={importLabel}
+                />
+            </div>
+        </div>
 
         {/* Abas */}
         <div className="flex gap-4 mb-8 border-b border-gray-200 dark:border-gray-700">
@@ -180,21 +304,21 @@ export default function AdminPanel() {
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-fit sticky top-6">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-xl text-gray-800 dark:text-white">
-                            {editingId ? 'Editar Exercício' : 'Novo Exercício'}
+                            {editingId ? '✏️ Editar Exercício' : '✨ Novo Exercício'}
                         </h3>
                         {editingId && (
-                            <button onClick={resetExerciseForm} className="text-xs text-red-500 hover:underline">Cancelar Edição</button>
+                            <button onClick={resetExerciseForm} className="text-xs text-red-500 hover:underline">Cancelar</button>
                         )}
                     </div>
                     
                     <form onSubmit={handleSaveExercise} className="space-y-4">
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase">Nome</label>
-                            <input required type="text" value={exForm.name} onChange={e => setExForm({...exForm, name: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Ex: Supino Reto" />
+                            <input required type="text" value={exForm.name} onChange={e => setExForm({...exForm, name: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Ex: Supino Reto" />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase">Grupo Muscular</label>
-                            <select required value={exForm.muscleGroup} onChange={e => setExForm({...exForm, muscleGroup: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <select required value={exForm.muscleGroup} onChange={e => setExForm({...exForm, muscleGroup: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                                 <option value="">Selecione...</option>
                                 <option value="peito">Peito</option>
                                 <option value="costas">Costas</option>
@@ -207,24 +331,30 @@ export default function AdminPanel() {
                         <div className="grid grid-cols-3 gap-2">
                              <div>
                                 <label className="text-xs font-bold text-gray-400 uppercase">Séries</label>
-                                <input type="number" value={exForm.sets} onChange={e => setExForm({...exForm, sets: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                <input type="number" value={exForm.sets} onChange={e => setExForm({...exForm, sets: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
                              </div>
                              <div>
                                 <label className="text-xs font-bold text-gray-400 uppercase">Reps</label>
-                                <input type="text" value={exForm.reps} onChange={e => setExForm({...exForm, reps: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                <input type="text" value={exForm.reps} onChange={e => setExForm({...exForm, reps: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
                              </div>
                              <div>
                                 <label className="text-xs font-bold text-gray-400 uppercase">Rest(s)</label>
-                                <input type="number" value={exForm.rest} onChange={e => setExForm({...exForm, rest: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                <input type="number" value={exForm.rest} onChange={e => setExForm({...exForm, rest: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
                              </div>
                         </div>
+                        
                         <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase">URL do GIF</label>
-                            <input type="url" value={exForm.machineImage} onChange={e => setExForm({...exForm, machineImage: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="https://..." />
+                            <label className="text-xs font-bold text-gray-400 uppercase">Link do GIF</label>
+                            <input type="text" value={exForm.machineImage} onChange={e => setExForm({...exForm, machineImage: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Cole o link aqui..." />
                         </div>
                         
-                        <button type="submit" className={`w-full text-white font-bold py-3 rounded-xl transition-colors ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'}`}>
-                            {editingId ? 'Atualizar Exercício 💾' : '+ Cadastrar Exercício'}
+                        <div>
+                            <label className="text-xs font-bold text-gray-400 uppercase">Execução</label>
+                            <textarea rows="3" value={exForm.execution} onChange={e => setExForm({...exForm, execution: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Descreva como fazer..." />
+                        </div>
+                        
+                        <button type="submit" className={`w-full text-white font-bold py-4 rounded-xl transition-colors shadow-lg ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'}`}>
+                            {editingId ? 'Salvar Alterações 💾' : 'Cadastrar Exercício 🚀'}
                         </button>
                     </form>
                 </div>
@@ -233,21 +363,21 @@ export default function AdminPanel() {
                 <div className="lg:col-span-2 space-y-3">
                     <h3 className="font-bold text-gray-800 dark:text-white">Banco de Exercícios ({exercises.length})</h3>
                     {exercises.map(ex => (
-                        <div key={ex.id} className={`bg-white dark:bg-gray-800 p-4 rounded-xl border flex justify-between items-center group ${editingId === ex.id ? 'border-orange-400 ring-1 ring-orange-400' : 'border-gray-100 dark:border-gray-700'}`}>
+                        <div key={ex.firestoreId} className={`bg-white dark:bg-gray-800 p-4 rounded-xl border flex justify-between items-center group transition-all ${editingId === ex.firestoreId ? 'border-orange-400 ring-2 ring-orange-400/20' : 'border-gray-100 dark:border-gray-700'}`}>
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+                                <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden shrink-0">
                                     {ex.machineImage ? <img src={ex.machineImage} className="w-full h-full object-cover" alt="" /> : <span className="flex items-center justify-center h-full text-xs">IMG</span>}
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-gray-800 dark:text-white">{ex.name}</h4>
+                                    <h4 className="font-bold text-gray-800 dark:text-white line-clamp-1">{ex.name}</h4>
                                     <p className="text-xs text-gray-500 uppercase">{ex.muscleGroup} • {ex.sets}x{ex.reps}</p>
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => handleEditExercise(ex)} className="text-gray-400 hover:text-blue-500 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <button onClick={() => handleEditExercise(ex)} className="text-gray-400 hover:text-blue-500 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors">
                                     ✏️
                                 </button>
-                                <button onClick={() => handleDeleteExercise(ex.id)} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <button onClick={() => handleDeleteExercise(ex.firestoreId)} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg transition-colors">
                                     🗑️
                                 </button>
                             </div>
@@ -265,25 +395,25 @@ export default function AdminPanel() {
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-fit sticky top-6">
                      <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-xl text-gray-800 dark:text-white">
-                            {editingId ? 'Editar Ficha' : 'Criar Nova Ficha'}
+                            {editingId ? '✏️ Editar Ficha' : '✨ Nova Ficha'}
                         </h3>
                         {editingId && (
-                            <button onClick={resetTrainingForm} className="text-xs text-red-500 hover:underline">Cancelar Edição</button>
+                            <button onClick={resetTrainingForm} className="text-xs text-red-500 hover:underline">Cancelar</button>
                         )}
                     </div>
                      
                      <form onSubmit={handleSaveTraining} className="space-y-4">
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase">Nome do Treino</label>
-                            <input required type="text" value={trainingForm.name} onChange={e => setTrainingForm({...trainingForm, name: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Ex: Treino A" />
+                            <input required type="text" value={trainingForm.name} onChange={e => setTrainingForm({...trainingForm, name: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Ex: Treino A" />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase">Descrição</label>
-                            <textarea value={trainingForm.description} onChange={e => setTrainingForm({...trainingForm, description: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                            <textarea value={trainingForm.description} onChange={e => setTrainingForm({...trainingForm, description: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
                         </div>
                         <div>
                             <label className="text-xs font-bold text-gray-400 uppercase">Dificuldade</label>
-                            <select value={trainingForm.difficulty} onChange={e => setTrainingForm({...trainingForm, difficulty: e.target.value})} className="w-full p-2 rounded border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <select value={trainingForm.difficulty} onChange={e => setTrainingForm({...trainingForm, difficulty: e.target.value})} className="w-full p-3 rounded-xl border dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                                 <option value="Iniciante">Iniciante</option>
                                 <option value="Intermediário">Intermediário</option>
                                 <option value="Avançado">Avançado</option>
@@ -296,23 +426,23 @@ export default function AdminPanel() {
                             <div className="h-60 overflow-y-auto border dark:border-gray-700 rounded-xl p-2 space-y-1 bg-gray-50 dark:bg-gray-900">
                                 {exercises.map(ex => (
                                     <div 
-                                        key={ex.id} 
-                                        onClick={() => toggleExerciseSelection(ex.id)}
-                                        className={`p-2 rounded-lg cursor-pointer text-sm flex justify-between items-center transition-colors ${
-                                            selectedExercises.includes(ex.id) 
+                                        key={ex.firestoreId} 
+                                        onClick={() => toggleExerciseSelection(ex.firestoreId)}
+                                        className={`p-3 rounded-lg cursor-pointer text-sm flex justify-between items-center transition-colors ${
+                                            selectedExercises.includes(ex.firestoreId) 
                                             ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-bold' 
                                             : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
                                         }`}
                                     >
                                         <span>{ex.name}</span>
-                                        {selectedExercises.includes(ex.id) && <span>✅</span>}
+                                        {selectedExercises.includes(ex.firestoreId) && <span>✅</span>}
                                     </div>
                                 ))}
                             </div>
                         </div>
 
-                        <button type="submit" className={`w-full text-white font-bold py-3 rounded-xl transition-colors ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                            {editingId ? 'Atualizar Ficha 💾' : 'Salvar Ficha 💾'}
+                        <button type="submit" className={`w-full text-white font-bold py-4 rounded-xl transition-colors shadow-lg ${editingId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                            {editingId ? 'Salvar Ficha 💾' : 'Criar Ficha 💾'}
                         </button>
                      </form>
                 </div>
@@ -321,17 +451,17 @@ export default function AdminPanel() {
                 <div className="space-y-4">
                     <h3 className="font-bold text-gray-800 dark:text-white">Fichas Ativas ({trainings.length})</h3>
                     {trainings.map(tr => (
-                        <div key={tr.id} className={`bg-white dark:bg-gray-800 p-5 rounded-xl border shadow-sm ${editingId === tr.id ? 'border-orange-400 ring-1 ring-orange-400' : 'border-gray-100 dark:border-gray-700'}`}>
+                        <div key={tr.firestoreId} className={`bg-white dark:bg-gray-800 p-5 rounded-xl border shadow-sm transition-all ${editingId === tr.firestoreId ? 'border-orange-400 ring-2 ring-orange-400/20' : 'border-gray-100 dark:border-gray-700'}`}>
                             <div className="flex justify-between items-start">
                                 <div>
                                     <h4 className="font-bold text-lg text-gray-800 dark:text-white">{tr.name}</h4>
                                     <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded font-bold text-gray-600 dark:text-gray-300">{tr.difficulty}</span>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={() => handleEditTraining(tr)} className="text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-gray-700 p-2 rounded-lg">
+                                    <button onClick={() => handleEditTraining(tr)} className="text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-gray-700 p-2 rounded-lg transition-colors">
                                         ✏️
                                     </button>
-                                    <button onClick={() => handleDeleteTraining(tr.id)} className="text-gray-400 hover:text-red-500 bg-gray-50 dark:bg-gray-700 p-2 rounded-lg">
+                                    <button onClick={() => handleDeleteTraining(tr.firestoreId)} className="text-gray-400 hover:text-red-500 bg-gray-50 dark:bg-gray-700 p-2 rounded-lg transition-colors">
                                         🗑️
                                     </button>
                                 </div>
@@ -340,7 +470,7 @@ export default function AdminPanel() {
                                 <p className="text-xs font-bold text-gray-400 uppercase mb-2">Exercícios:</p>
                                 <div className="flex flex-wrap gap-2">
                                     {tr.exercises?.map(exId => {
-                                        const ex = exercises.find(e => e.id === exId);
+                                        const ex = exercises.find(e => e.firestoreId === exId);
                                         return ex ? (
                                             <span key={exId} className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 px-2 py-1 rounded border border-blue-100 dark:border-blue-900">
                                                 {ex.name}

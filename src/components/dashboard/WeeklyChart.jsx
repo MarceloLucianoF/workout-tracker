@@ -1,66 +1,83 @@
 import React from 'react';
 
 export default function WeeklyChart({ history }) {
-  // Lógica para calcular treinos dos últimos 7 dias
-  const getLast7Days = () => {
-    const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const today = new Date();
-    const last7Days = [];
+  // 1. Gera os últimos 7 dias (Dinâmico)
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i)); // De 6 dias atrás até hoje
+    d.setHours(0,0,0,0);
+    return d;
+  });
 
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      
-      // Conta quantos treinos houve neste dia
-      const count = history.filter(h => {
+  // 2. Mapeia os dados
+  const chartData = last7Days.map(date => {
+    // Formata dia da semana (Seg, Ter...)
+    const dayStr = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').slice(0, 3);
+    
+    // Conta treinos neste dia
+    const count = history.filter(h => {
+        if (!h.date) return false; // Proteção contra dados antigos sem data
         const hDate = new Date(h.date);
-        return hDate.getDate() === d.getDate() && 
-               hDate.getMonth() === d.getMonth() && 
-               hDate.getFullYear() === d.getFullYear();
-      }).length;
+        return hDate.getDate() === date.getDate() && 
+               hDate.getMonth() === date.getMonth() &&
+               hDate.getFullYear() === date.getFullYear();
+    }).length;
 
-      last7Days.push({
-        day: days[d.getDay()],
-        count: count,
-        isToday: i === 0
-      });
-    }
-    return last7Days;
-  };
+    return { 
+        day: dayStr.charAt(0).toUpperCase() + dayStr.slice(1), 
+        count,
+        isToday: date.getDate() === new Date().getDate()
+    };
+  });
 
-  const data = getLast7Days();
-  const maxCount = Math.max(...data.map(d => d.count), 1); // Evita divisão por zero
+  const maxVal = Math.max(...chartData.map(d => d.count), 1); // Escala máxima
 
   return (
-    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-      <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-6">Frequência Semanal</h3>
-      
-      <div className="flex items-end justify-between h-32 gap-2">
-        {data.map((item, index) => {
-          // Calcula altura da barra (mínimo 10% para não sumir)
-          const height = item.count > 0 ? (item.count / maxCount) * 100 : 5;
+    <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-full flex flex-col">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            Frequência (7 dias)
+        </h3>
+        <span className="text-xs font-bold text-green-600 bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-full">
+            Meta: 4/semana
+        </span>
+      </div>
+
+      {/* Área do Gráfico */}
+      <div className="flex items-end justify-between flex-1 gap-3 min-h-[140px]">
+        {chartData.map((item, i) => {
+          // Altura: Se tiver treino usa % real, se não usa 10% fixo pra mostrar a barra cinza
+          const heightPct = item.count > 0 ? (item.count / maxVal) * 100 : 10; 
           
           return (
-            <div key={index} className="flex flex-col items-center w-full group">
+            <div key={i} className="flex-1 flex flex-col items-center group relative cursor-pointer h-full justify-end">
               
-              {/* Tooltip com quantidade */}
-              <div className="mb-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-gray-800 text-white px-2 py-1 rounded">
-                {item.count} treinos
-              </div>
+              {/* Tooltip Flutuante (Só aparece se tiver treino) */}
+              {item.count > 0 && (
+                  <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg pointer-events-none whitespace-nowrap z-20 mb-2">
+                     {item.count} treinos
+                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-black rotate-45"></div>
+                  </div>
+              )}
 
               {/* A Barra */}
               <div 
-                className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 ease-out ${
-                  item.count > 0 
-                    ? 'bg-blue-600 dark:bg-blue-500 hover:bg-blue-500' 
-                    : 'bg-gray-100 dark:bg-gray-700'
-                } ${item.isToday ? 'ring-2 ring-offset-2 ring-blue-400 dark:ring-offset-gray-800' : ''}`}
-                style={{ height: `${height}%` }}
-              ></div>
-              
-              {/* Dia da Semana */}
-              <span className={`text-xs mt-3 font-medium ${
-                item.isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
+                style={{ height: `${heightPct}%` }}
+                className={`w-full rounded-t-md transition-all duration-700 ease-out relative ${
+                    item.count > 0 
+                    ? 'bg-blue-500 dark:bg-blue-600 group-hover:bg-blue-400'  // Cor quando tem treino
+                    : 'bg-gray-100 dark:bg-gray-700/50' // <--- CORREÇÃO: Cor cinza quando vazio (antes estava transparent)
+                } ${item.isToday ? 'ring-2 ring-blue-200 dark:ring-blue-900/50' : ''}`}
+              >
+                 {/* Brilho no topo da barra ativa */}
+                 {item.count > 0 && (
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-white/20"></div>
+                 )}
+              </div>
+
+              {/* Label do Dia */}
+              <span className={`text-[10px] mt-3 font-bold uppercase transition-colors ${
+                  item.isToday ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
               }`}>
                 {item.day}
               </span>
