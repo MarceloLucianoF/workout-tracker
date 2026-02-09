@@ -1,210 +1,212 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../hooks/AuthContext';
-import { useTheme } from '../../hooks/ThemeContext';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
-import { useNavigate } from 'react-router-dom'; // <--- IMPORTANTE
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 export default function Profile() {
   const { user, logout } = useAuthContext();
-  const { theme, toggleTheme } = useTheme();
-  const navigate = useNavigate(); // <--- IMPORTANTE
+  const navigate = useNavigate();
   
-  const [loading, setLoading] = useState(false);
-  const [userData, setUserData] = useState({
-    weight: '',
+  const [loading, setLoading] = useState(true);
+  const [formData, setFormData] = useState({
+    displayName: '',
+    goal: 'Hipertrofia',
     height: '',
+    weight: '',
     age: '',
-    goal: 'Hipertrofia'
+    photoURL: ''
   });
 
+  // Carrega dados do Firestore
   useEffect(() => {
-    const fetchUserData = async () => {
+    const fetchProfile = async () => {
       if (!user) return;
       try {
         const docRef = doc(db, 'users', user.uid);
         const docSnap = await getDoc(docRef);
+        
         if (docSnap.exists()) {
-          setUserData(prev => ({ ...prev, ...docSnap.data() }));
+          const data = docSnap.data();
+          setFormData({
+            displayName: data.displayName || user.displayName || '',
+            goal: data.goal || 'Hipertrofia',
+            height: data.height || '',
+            weight: data.weight || '',
+            age: data.age || '',
+            photoURL: data.photoURL || ''
+          });
         }
       } catch (error) {
-        console.error("Erro ao carregar perfil:", error);
+        console.error("Erro perfil:", error);
+      } finally {
+        setLoading(false);
       }
     };
-    fetchUserData();
+    fetchProfile();
   }, [user]);
 
-  const handleSave = async () => {
-    setLoading(true);
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    const saveToast = toast.loading('Salvando perfil...');
+    
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        ...userData,
-        email: user.email,
-        displayName: user.displayName,
-        updatedAt: new Date()
-      }, { merge: true });
-      
-      toast.success('Perfil atualizado!');
+      await updateDoc(doc(db, 'users', user.uid), {
+        ...formData,
+        updatedAt: new Date().toISOString()
+      });
+      toast.success('Perfil atualizado!', { id: saveToast });
     } catch (error) {
-      toast.error('Erro ao salvar.');
-    } finally {
-      setLoading(false);
+      toast.error('Erro ao salvar.', { id: saveToast });
     }
   };
 
-  const calculateIMC = () => {
-    if (!userData.weight || !userData.height) return null;
-    const h = Number(userData.height) / 100;
-    const w = Number(userData.weight);
-    const imc = (w / (h * h)).toFixed(1);
-    return isNaN(imc) ? null : imc;
+  const handleLogout = async () => {
+    if (window.confirm("Deseja realmente sair?")) {
+      await logout();
+      navigate('/login');
+    }
   };
 
-  const imc = calculateIMC();
+  if (loading) return <div className="min-h-screen flex items-center justify-center dark:bg-gray-900"><div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500"></div></div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 transition-colors duration-300">
-      <div className="max-w-2xl mx-auto pb-24">
-        <h1 className="text-3xl font-bold mb-8 text-gray-800 dark:text-white">Meu Perfil 👤</h1>
-
-        {/* Card Principal */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-lg border border-gray-100 dark:border-gray-700 mb-6 flex flex-col md:flex-row items-center gap-6">
-          <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-4xl font-bold text-white shadow-xl">
-            {user?.displayName?.charAt(0).toUpperCase() || 'U'}
-          </div>
-          <div className="text-center md:text-left">
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{user?.displayName}</h2>
-            <p className="text-gray-500 dark:text-gray-400">{user?.email}</p>
-            <div className="flex gap-2 mt-3 justify-center md:justify-start">
-               <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full text-xs font-bold uppercase">
-                 {userData.goal}
-               </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Configurações */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div 
-                onClick={toggleTheme}
-                className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-blue-500 transition-colors group"
-            >
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-sm font-bold text-gray-400 uppercase">Aparência</p>
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mt-1">
-                            {theme === 'dark' ? 'Modo Escuro 🌙' : 'Modo Claro ☀️'}
-                        </h3>
-                    </div>
-                    <div className="w-10 h-6 bg-gray-200 dark:bg-gray-600 rounded-full relative group-hover:bg-blue-200 dark:group-hover:bg-blue-900 transition-colors">
-                        <div className={`absolute top-1 w-4 h-4 rounded-full transition-all duration-300 ${theme === 'dark' ? 'right-1 bg-blue-400' : 'left-1 bg-yellow-400'}`}></div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <p className="text-sm font-bold text-gray-400 uppercase">Seu IMC</p>
-                <div className="flex items-end gap-2 mt-1">
-                    <h3 className="text-3xl font-bold text-gray-800 dark:text-white">{imc || '--'}</h3>
-                    <span className="text-sm text-gray-500 mb-1">kg/m²</span>
-                </div>
-            </div>
-        </div>
-
-        {/* Formulário de Dados Físicos */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 shadow-sm border border-gray-100 dark:border-gray-700 mb-8">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-gray-800 dark:text-white">Dados Corporais</h3>
-                
-                {/* BOTÃO NOVO DE ATALHO */}
-                <button 
-                    onClick={() => navigate('/measurements')}
-                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                >
-                    📏 Ver Diário de Medidas →
-                </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Peso (kg)</label>
-                    <input 
-                        type="number" 
-                        value={userData.weight}
-                        onChange={(e) => setUserData({...userData, weight: e.target.value})}
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-700 border-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white font-bold"
-                        placeholder="Ex: 75"
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Altura (cm)</label>
-                    <input 
-                        type="number" 
-                        value={userData.height}
-                        onChange={(e) => setUserData({...userData, height: e.target.value})}
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-700 border-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white font-bold"
-                        placeholder="Ex: 175"
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Idade</label>
-                    <input 
-                        type="number" 
-                        value={userData.age}
-                        onChange={(e) => setUserData({...userData, age: e.target.value})}
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-700 border-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white font-bold"
-                        placeholder="Ex: 25"
-                    />
-                </div>
-            </div>
-            
-            <div className="mt-6">
-                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Objetivo Atual</label>
-                 <div className="flex gap-4">
-                    {['Emagrecimento', 'Hipertrofia', 'Força'].map(opt => (
-                        <button
-                            key={opt}
-                            onClick={() => setUserData({...userData, goal: opt})}
-                            className={`flex-1 py-2 rounded-lg text-sm font-bold border ${
-                                userData.goal === opt 
-                                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' 
-                                : 'bg-transparent text-gray-500 border-gray-200 dark:border-gray-700'
-                            }`}
-                        >
-                            {opt}
-                        </button>
-                    ))}
-                 </div>
-            </div>
-
-            {/* Botão Atalho Grande */}
-            <button 
-                onClick={() => navigate('/measurements')}
-                className="w-full mt-6 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold py-3 rounded-xl border border-blue-100 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-2"
-            >
-                📊 Abrir Histórico Completo de Medidas
-            </button>
-
-            <button 
-                onClick={handleSave}
-                disabled={loading}
-                className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-600/20 transition-transform active:scale-95 flex items-center justify-center gap-2"
-            >
-                {loading ? 'Salvando...' : 'Salvar Dados Básicos 💾'}
-            </button>
-        </div>
-
-        <button 
-            onClick={logout}
-            className="w-full bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 font-bold py-4 rounded-xl border border-red-100 dark:border-red-900/50 transition-colors flex items-center justify-center gap-2"
-        >
-            🚪 Sair da Conta
-        </button>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-8 transition-colors duration-300 pb-24">
+      <div className="max-w-2xl mx-auto">
         
-        <p className="text-center text-xs text-gray-400 mt-6">
-            AcademyUp v2.0 • Feito com 💪
-        </p>
+        {/* Header com Botão Voltar */}
+        <div className="flex justify-between items-center mb-8">
+            <button onClick={() => navigate('/home')} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white font-bold flex items-center gap-2">
+                ← Voltar
+            </button>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Meu Perfil</h1>
+            <div className="w-8"></div> {/* Espaço vazio para centralizar título visualmente */}
+        </div>
+
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+            
+            {/* Capa / Avatar */}
+            <div className="h-32 bg-gradient-to-r from-blue-600 to-purple-600 relative">
+                <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
+                    <div className="w-24 h-24 rounded-full bg-white dark:bg-gray-800 p-1 shadow-xl">
+                        <div className="w-full h-full rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-4xl overflow-hidden">
+                            {formData.photoURL ? (
+                                <img src={formData.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                            ) : (
+                                <span>{formData.displayName?.charAt(0).toUpperCase() || '👤'}</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="pt-16 pb-8 px-8">
+                <form onSubmit={handleSave} className="space-y-6">
+                    
+                    {/* Dados Pessoais */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="col-span-1 md:col-span-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Nome de Exibição</label>
+                            <input 
+                                type="text" 
+                                name="displayName"
+                                value={formData.displayName} 
+                                onChange={handleChange}
+                                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-bold"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Meta Principal</label>
+                            <select 
+                                name="goal"
+                                value={formData.goal} 
+                                onChange={handleChange}
+                                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                            >
+                                <option value="Hipertrofia">💪 Hipertrofia</option>
+                                <option value="Emagrecimento">🔥 Emagrecimento</option>
+                                <option value="Força">🏋️ Força Pura</option>
+                                <option value="Resistência">🏃 Resistência</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Link da Foto (Opcional)</label>
+                            <input 
+                                type="url" 
+                                name="photoURL"
+                                placeholder="https://..."
+                                value={formData.photoURL} 
+                                onChange={handleChange}
+                                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white text-sm"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="border-t border-gray-100 dark:border-gray-700 my-6"></div>
+
+                    {/* Medidas Corporais */}
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Medidas Atuais</h3>
+                        <div className="grid grid-cols-3 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Peso (kg)</label>
+                                <input 
+                                    type="number" 
+                                    name="weight"
+                                    value={formData.weight} 
+                                    onChange={handleChange}
+                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Altura (cm)</label>
+                                <input 
+                                    type="number" 
+                                    name="height"
+                                    value={formData.height} 
+                                    onChange={handleChange}
+                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Idade</label>
+                                <input 
+                                    type="number" 
+                                    name="age"
+                                    value={formData.age} 
+                                    onChange={handleChange}
+                                    className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-mono"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 flex flex-col gap-4">
+                        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-600/20 transition-transform active:scale-95">
+                            Salvar Alterações 💾
+                        </button>
+                        
+                        <button type="button" onClick={handleLogout} className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-bold py-4 rounded-xl hover:bg-red-100 transition-colors">
+                            Sair da Conta 🚪
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+        {/* Rodapé Informativo */}
+        <div className="text-center mt-8 text-gray-400 text-xs">
+            <p>AcademyUp v1.0.0 (MVP)</p>
+            <p className="mt-1">ID: {user.uid.slice(0, 8)}...</p>
+        </div>
 
       </div>
     </div>
