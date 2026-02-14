@@ -13,10 +13,24 @@ const ExerciseSelector = ({ isOpen, onClose, onSelect }) => {
     useEffect(() => {
         if (!isOpen) return;
         const load = async () => {
-            // Busca exercícios do sistema (ou criados pelo coach)
-            const q = query(collection(db, 'exercises'), orderBy('name'));
-            const snap = await getDocs(q);
-            setExercises(snap.docs.map(d => ({ firestoreId: d.id, ...d.data() })));
+            try {
+                // Busca exercícios do sistema (ou criados pelo coach)
+                const q = query(collection(db, 'exercises'), orderBy('name'));
+                const snap = await getDocs(q);
+                
+                // Normalização: Tenta 'machineImage' E 'demoUrl' (correção do bug)
+                const list = snap.docs.map(d => {
+                    const data = d.data();
+                    return { 
+                        firestoreId: d.id, 
+                        ...data,
+                        machineImage: data.machineImage || data.demoUrl || null // Garante imagem
+                    };
+                });
+                setExercises(list);
+            } catch (error) {
+                console.error("Erro ao carregar:", error);
+            }
         };
         load();
     }, [isOpen]);
@@ -93,12 +107,12 @@ const TrainingEditor = ({ training, onSave, onCancel }) => {
         setForm(prev => ({
             ...prev,
             exercises: [...(prev.exercises || []), {
-                firestoreId: ex.firestoreId, // Salva referência
+                firestoreId: ex.firestoreId,
                 name: ex.name,
                 muscleGroup: ex.muscleGroup,
-                machineImage: ex.machineImage || null,
+                machineImage: ex.machineImage, // Já normalizado no seletor
                 sets: '3', 
-                reps: '10-12', 
+                reps: '10', 
                 rest: '60' 
             }]
         }));
@@ -288,6 +302,7 @@ export default function CoachTrainingsPage() {
                 exercises: trainingData.exercises.map(ex => ({
                     firestoreId: ex.firestoreId || ex.id,
                     name: ex.name,
+                    // Garante que a imagem seja salva, independente da origem
                     machineImage: ex.machineImage || null,
                     muscleGroup: ex.muscleGroup || '',
                     sets: ex.sets,

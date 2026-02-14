@@ -21,12 +21,12 @@ export default function CoachStudentsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // A. Buscar Alunos vinculados a este Coach
+        // A. Buscar Alunos
         const qStudents = query(collection(db, 'users'), where('coachId', '==', user.uid));
         const studentsSnap = await getDocs(qStudents);
         const studentsList = studentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // B. Buscar Fichas criadas pelo Coach (Para preencher o modal)
+        // B. Buscar Fichas (Para preencher o modal de seleção)
         const qTrainings = query(
             collection(db, 'trainings'), 
             where('coachId', '==', user.uid),
@@ -47,39 +47,39 @@ export default function CoachStudentsPage() {
     fetchData();
   }, [user]);
 
-  // 2. Helper para mostrar o nome do treino atual no card do aluno
+  // 2. Helper para mostrar o nome do treino atual
   const getTrainingName = (trainingId) => {
       if (!trainingId) return null;
-      // Procura pelo ID do documento ou pelo campo firestoreId se existir
+      // Tenta achar pelo ID ou pelo campo firestoreId (compatibilidade)
       const t = trainings.find(tr => tr.id === trainingId || tr.firestoreId === trainingId);
-      return t ? t.name : 'Treino não encontrado (Apagado?)';
+      return t ? t.name : 'Treino Removido';
   };
 
-  // 3. Ação: Atribuir Treino ao Aluno
+  // 3. Ação: Atribuir Treino
   const handleAssignTraining = async (trainingId) => {
       if (!selectedStudent) return;
       
       const loadingToast = toast.loading("Enviando ficha...");
       try {
-          // Atualiza o perfil do aluno com o ID do treino escolhido
+          // Atualiza o perfil do aluno com o ID do treino
           await updateDoc(doc(db, 'users', selectedStudent.id), {
               currentTrainingId: trainingId
           });
 
-          // Atualiza lista localmente para refletir a mudança instantaneamente
+          // Atualiza lista localmente (UX rápida)
           setStudents(prev => prev.map(s => 
               s.id === selectedStudent.id ? { ...s, currentTrainingId: trainingId } : s
           ));
 
-          toast.success("Ficha atualizada com sucesso!", { id: loadingToast });
+          toast.success("Ficha atualizada!", { id: loadingToast });
           setShowModal(false);
       } catch (error) {
           console.error(error);
-          toast.error("Erro ao atribuir ficha.", { id: loadingToast });
+          toast.error("Erro ao atribuir.", { id: loadingToast });
       }
   };
 
-  // 4. Ação: Abrir Chat direto com o aluno
+  // 4. Ação: Chat Rápido
   const handleChat = (student) => {
       navigate('/coach/chat', { 
           state: { 
@@ -98,7 +98,7 @@ export default function CoachStudentsPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6 md:p-8 pb-32">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* HEADER */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-fade-in-down">
             <div>
                 <button onClick={() => navigate('/coach/dashboard')} className="text-gray-500 hover:text-blue-500 text-sm font-bold mb-2">← Voltar</button>
@@ -106,16 +106,16 @@ export default function CoachStudentsPage() {
                 <p className="text-gray-500 text-sm">Gerencie o acesso e as fichas de treino.</p>
             </div>
             
-            {/* Botão de Atalho para Convidar */}
+            {/* Botão de convite rápido */}
             <button 
                 onClick={() => navigate('/coach/dashboard')} 
-                className="bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-4 py-2 rounded-xl font-bold shadow-sm text-sm hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-4 py-2 rounded-xl font-bold shadow-sm text-sm hover:bg-gray-50 transition-colors"
             >
-                <span>📢</span> Pegar Código
+                📢 Pegar Código de Convite
             </button>
         </div>
 
-        {/* LISTA DE ALUNOS */}
+        {/* Lista de Alunos */}
         {students.length === 0 ? (
             <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700">
                 <span className="text-4xl block mb-2 opacity-50">🦗</span>
@@ -130,13 +130,15 @@ export default function CoachStudentsPage() {
                     return (
                         <div key={student.id} className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row items-center justify-between gap-6 group hover:border-blue-200 transition-colors">
                             
-                            {/* 1. Identificação do Aluno */}
+                            {/* Info do Aluno (Clicável para ir aos Detalhes) */}
                             <div 
                                 className="flex items-center gap-4 w-full md:w-auto cursor-pointer"
-                                onClick={() => navigate(`/coach/students/${student.id}`)} // Vai para detalhes (Próxima etapa)
+                                onClick={() => navigate(`/coach/students/${student.id}`)} // ✅ Navegação para Detalhes
+                                title="Ver Prontuário"
                             >
-                                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0 shadow-md overflow-hidden">
+                                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0 shadow-md overflow-hidden relative">
                                     {student.photoURL ? <img src={student.photoURL} className="w-full h-full object-cover" alt=""/> : student.displayName?.[0]}
+                                    <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors"></div>
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-gray-800 dark:text-white text-lg hover:text-blue-600 transition-colors">{student.displayName}</h3>
@@ -147,7 +149,7 @@ export default function CoachStudentsPage() {
                                 </div>
                             </div>
 
-                            {/* 2. Status do Treino (Card Central) */}
+                            {/* Status do Treino (Card Central) */}
                             <div className="flex-1 w-full md:px-8">
                                 <div className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-xl border border-gray-100 dark:border-gray-700/50 flex items-center justify-between">
                                     <div className="min-w-0 pr-2">
@@ -171,7 +173,7 @@ export default function CoachStudentsPage() {
                                 </div>
                             </div>
 
-                            {/* 3. Botões de Ação */}
+                            {/* Ações */}
                             <div className="flex gap-2 w-full md:w-auto">
                                 <button 
                                     onClick={() => handleChat(student)}
@@ -223,9 +225,7 @@ export default function CoachStudentsPage() {
                             </div>
                         ) : (
                             trainings.map(t => {
-                                // Verifica se é o treino atual (compatibilidade com ID string ou objeto)
                                 const isCurrent = selectedStudent.currentTrainingId === t.id || selectedStudent.currentTrainingId === t.firestoreId;
-                                
                                 return (
                                     <button 
                                         key={t.id}
@@ -234,7 +234,7 @@ export default function CoachStudentsPage() {
                                         className={`w-full text-left p-4 rounded-xl border transition-all flex justify-between items-center group ${
                                             isCurrent
                                             ? 'bg-green-50 border-green-500 ring-1 ring-green-500 dark:bg-green-900/20 opacity-80 cursor-default' 
-                                            : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 hover:border-blue-500 hover:shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:border-blue-500 hover:shadow-md'
                                         }`}
                                     >
                                         <div>
@@ -242,7 +242,7 @@ export default function CoachStudentsPage() {
                                                 {t.name}
                                             </h4>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[10px] bg-gray-100 dark:bg-gray-600 px-2 py-0.5 rounded text-gray-500 dark:text-gray-300 uppercase font-bold">
+                                                <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-500 dark:text-gray-300 uppercase font-bold">
                                                     {t.difficulty}
                                                 </span>
                                                 <span className="text-xs text-gray-400">

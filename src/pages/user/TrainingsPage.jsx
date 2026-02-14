@@ -7,7 +7,6 @@ import { useAuthContext } from '../../hooks/AuthContext';
 
 // --- COMPONENTES VISUAIS ---
 
-// 1. Skeleton Loading (Carregamento Premium)
 const TrainingSkeleton = () => (
   <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 h-48 border border-gray-100 dark:border-gray-700 animate-pulse flex flex-col justify-between">
     <div className="flex justify-between">
@@ -26,7 +25,6 @@ const TrainingSkeleton = () => (
   </div>
 );
 
-// 2. Chip de Filtro
 const FilterChip = ({ label, active, onClick }) => (
   <button 
     onClick={onClick}
@@ -44,12 +42,11 @@ export default function TrainingsPage() {
   const { trainings, loading: loadingTrainings, error } = useAdmin();
   const { user } = useAuthContext();
   
-  // States Locais
-  const [historyMap, setHistoryMap] = useState({}); // { trainingId: lastDate }
+  const [historyMap, setHistoryMap] = useState({});
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [filter, setFilter] = useState('Todos');
 
-  // 1. Busca Histórico do Usuário para dar inteligência
+  // 1. Busca Histórico
   useEffect(() => {
     const fetchUserHistory = async () => {
       if (!user) return;
@@ -60,11 +57,9 @@ export default function TrainingsPage() {
             orderBy('date', 'desc')
         );
         const snapshot = await getDocs(q);
-        
         const history = {};
         snapshot.docs.forEach(doc => {
             const data = doc.data();
-            // Salva apenas a data mais recente de cada treino
             if (data.trainingId && !history[data.trainingId]) {
                 history[data.trainingId] = new Date(data.date);
             }
@@ -79,19 +74,17 @@ export default function TrainingsPage() {
     fetchUserHistory();
   }, [user]);
 
-  // 2. Lógica Inteligente (Helpers)
+  // 2. Helpers
   const getTrainingEmoji = (name) => {
-    // Tenta detectar pelo nome (mais inteligente que letra)
-    const lower = name.toLowerCase();
+    const lower = (name || '').toLowerCase();
     if (lower.includes('peito') || lower.includes('superior')) return '🦍';
     if (lower.includes('perna') || lower.includes('inferior')) return '🦵';
     if (lower.includes('costas') || lower.includes('dorsal')) return '🐍';
     if (lower.includes('braço') || lower.includes('bíceps')) return '💪';
     if (lower.includes('cardio') || lower.includes('aeróbico')) return '🏃';
     if (lower.includes('full') || lower.includes('corpo')) return '⚡';
-
-    // Fallback para letra
-    const match = name.match(/Treino\s+([A-Z])/i);
+    
+    const match = (name || '').match(/Treino\s+([A-Z])/i);
     const letter = match ? match[1].toUpperCase() : '';
     const map = { 'A': '🔥', 'B': '⚡', 'C': '💣', 'D': '🧱', 'E': '🚀' };
     return map[letter] || '🏋️';
@@ -115,7 +108,7 @@ export default function TrainingsPage() {
       return date.toLocaleDateString('pt-BR');
   };
 
-  // 3. Processamento e Ordenação
+  // 3. Processamento
   const isLoading = loadingTrainings || loadingHistory;
 
   const filteredTrainings = trainings.filter(t => {
@@ -123,13 +116,13 @@ export default function TrainingsPage() {
       return t.difficulty?.toLowerCase() === filter.toLowerCase();
   });
 
-  // ORDENAÇÃO INTELIGENTE:
-  // 1. Treinos "Recomendados" (Nunca feitos ou feitos há muito tempo) primeiro
-  // 2. Treinos feitos recentemente por último (para rotacionar)
   const sortedTrainings = [...filteredTrainings].sort((a, b) => {
-      const dateA = historyMap[a.firestoreId] || new Date(0); // 1970 se nunca fez
-      const dateB = historyMap[b.firestoreId] || new Date(0);
-      return dateA - dateB; // Mais antigo (ou nunca feito) primeiro
+      // Prioridade ID real > firestoreId
+      const idA = a.id || a.firestoreId;
+      const idB = b.id || b.firestoreId;
+      const dateA = historyMap[idA] || new Date(0);
+      const dateB = historyMap[idB] || new Date(0);
+      return dateA - dateB;
   });
 
   if (error) return <div className="min-h-screen flex items-center justify-center dark:text-white">Erro: {error}</div>;
@@ -166,20 +159,29 @@ export default function TrainingsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {sortedTrainings.map((training) => {
-              const lastDate = historyMap[training.firestoreId];
+              // --- VALIDAÇÃO CRÍTICA ---
+              // Garante um ID válido. Prioriza o ID do documento (training.id) pois é o oficial.
+              const validId = training.id || training.firestoreId;
+              
+              if (!validId) {
+                  // Se não tem ID, não renderiza o card (evita links quebrados)
+                  console.warn("Treino ignorado por falta de ID:", training);
+                  return null;
+              }
+
+              const lastDate = historyMap[validId];
               const lastDoneText = formatLastDone(lastDate);
               const emoji = getTrainingEmoji(training.name);
-              
-              // Cálculo de Tempo Estimado (Heurística: 5 min por exercício)
               const estimatedTime = (training.exercises?.length || 0) * 5 + 10; 
 
               return (
                 <Link 
-                  to={`/training/${training.firestoreId}`} 
-                  key={training.firestoreId} 
+                  // ✅ CORREÇÃO: Usa a rota /training/ (singular) que bate com seu App.jsx
+                  to={`/training/${validId}`} 
+                  key={validId} 
                   className="group relative overflow-hidden bg-white dark:bg-gray-800 rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:bg-gradient-to-br from-white to-blue-50 dark:from-gray-800 dark:to-gray-800/80"
                 >
-                  {/* Badge de Recomendado (Se nunca fez ou fez há +7 dias) */}
+                  {/* Badge Recomendado */}
                   {(!lastDate || (new Date() - lastDate) / (1000 * 60 * 60 * 24) > 7) && (
                       <div className="absolute top-0 right-0 bg-blue-600 text-white text-[9px] font-bold px-3 py-1 rounded-bl-xl shadow-lg z-10">
                           RECOMENDADO
@@ -194,9 +196,8 @@ export default function TrainingsPage() {
                         
                         <div className="text-right">
                             <span className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider border mb-1 ${getDifficultyColor(training.difficulty)}`}>
-                                {training.difficulty}
+                                {training.difficulty || 'Geral'}
                             </span>
-                            {/* Inteligência de Produto: Mostra quando fez */}
                             <p className="text-[10px] font-bold text-gray-400 uppercase">
                                 {lastDoneText ? `Última: ${lastDoneText}` : 'Nunca realizado'}
                             </p>
@@ -204,14 +205,13 @@ export default function TrainingsPage() {
                     </div>
 
                     <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-1 group-hover:text-blue-600 transition-colors line-clamp-1">
-                        {training.name}
+                        {training.name || 'Treino Sem Nome'}
                     </h3>
                     
                     <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mb-5 h-10 leading-relaxed">
                         {training.description || "Foco total no desenvolvimento muscular."}
                     </p>
 
-                    {/* Footer Rico */}
                     <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-700 pt-4">
                         <div className="flex items-center gap-3">
                             <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/50 px-2 py-1 rounded-lg">

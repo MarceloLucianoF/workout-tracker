@@ -20,7 +20,6 @@ import MeasurementsPage from './pages/user/MeasurementsPage'; // ✅ NOVO
 import ExerciseAnalytics from './pages/user/ExerciseAnalytics'; // ✅ NOVO
 import UserChatPage from './pages/user/UserChatPage'; // ✅ Novo
 import WorkoutDetailsPage from './pages/user/WorkoutDetailsPage'; // ✅ Novo
-import TrainingRunner from './pages/user/TrainingRunner'; // ✅ Importar
 
 // --- PÁGINAS: ADMIN (TREINADOR) ---
 import AdminPanel from './pages/admin/AdminPanel';
@@ -88,7 +87,6 @@ function AppRoutes() {
           {/* --- ROTAS PROTEGIDAS (ALUNO) --- */}
           <Route path="/history/:checkInId" element={<ProtectedRoute><WorkoutDetailsPage /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute><UserChatPage /></ProtectedRoute>} />
-          <Route path="/training/:trainingId" element={<ProtectedRoute><TrainingRunner /></ProtectedRoute>} />
           
           {/* Dashboard & Perfil */}
           <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
